@@ -1694,7 +1694,7 @@ struct BuiltTestExecution {
 enum TestBuildExecution {
     DryRun,
     BuildFailed(i32),
-    Built(BuiltTestExecution),
+    Built(Box<BuiltTestExecution>),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1746,11 +1746,11 @@ fn execute_test_build_from_plan(
         ));
     }
 
-    Ok(TestBuildExecution::Built(BuiltTestExecution {
+    Ok(TestBuildExecution::Built(Box::new(BuiltTestExecution {
         _lock: lock,
         build_config,
         build_graph_backup,
-    }))
+    })))
 }
 
 /// Collect test artifacts for --build-only mode, matching legacy behavior.
