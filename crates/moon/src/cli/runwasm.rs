@@ -16,28 +16,37 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use std::{io::Write, path::PathBuf};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, bail};
 use moonbuild_rupes_recta::model::RunBackend;
 use mooncake::registry::{OnlineRegistry, Registry, path as registry_path};
 use moonutil::{
     cli::UniversalFlags,
-    common::FileLock,
+    common::{FileLock, SurfaceTarget, is_moon_pkg_exist},
+    mooncakes::sync::AutoSyncFlags,
     mooncakes::{ModuleName, RegistryConfig},
 };
 use reqwest::{StatusCode, header::USER_AGENT};
 use semver::Version;
 use tracing::instrument;
 
+use super::{BuildFlags, RunSubcommand};
 use crate::{rr_build, run::default_rt, user_diagnostics::UserDiagnostics};
 
-/// Run a prebuilt WebAssembly binary from Mooncakes
+/// Run a local package as WebAssembly or a prebuilt WebAssembly binary
 #[derive(Debug, clap::Parser)]
 #[clap(
-    long_about = r#"Run a prebuilt WebAssembly binary published as a Mooncakes asset.
+    long_about = r#"Run a local package as WebAssembly or a prebuilt WebAssembly binary published as a Mooncakes asset.
 
-Accepted coordinate forms:
+Local package inputs are handled like `moon run --target wasm`:
+  moon runwasm main
+  moon runwasm ./main
+
+Accepted Mooncakes coordinate forms:
   moon runwasm moonbitlang/parser/cmd/moonfmt@0.3.3
   moon runwasm moonbitlang/parser@0.3.3/cmd/moonfmt
   moon runwasm moonbitlang/parser/cmd/moonfmt
@@ -47,8 +56,8 @@ the latest version from the registry index. Fetched wasm files are cached under
 $MOON_HOME/registry/cache/assets and reused on later runs."#
 )]
 pub(crate) struct RunWasmSubcommand {
-    /// Mooncakes package coordinate of the prebuilt wasm binary
-    #[clap(value_name = "PACKAGE[@VERSION]")]
+    /// Local package path or Mooncakes package coordinate of the prebuilt wasm binary
+    #[clap(value_name = "LOCAL_PACKAGE|PACKAGE[@VERSION]")]
     pub package: String,
 
     /// The arguments provided to the wasm program
@@ -103,10 +112,13 @@ impl RunWasmCoordinate {
 
 #[instrument(skip_all)]
 pub(crate) fn run_runwasm(cli: &UniversalFlags, cmd: RunWasmSubcommand) -> anyhow::Result<i32> {
-    if cli.dry_run {
-        bail!("--dry-run is not supported for `moon runwasm`");
+    if should_run_as_local_package(&cmd.package)? {
+        return super::run_run(cli, runwasm_as_run_subcommand(cmd));
     }
 
+    if cli.dry_run {
+        bail!("--dry-run is not supported for Mooncakes assets in `moon runwasm`");
+    }
     let output = UserDiagnostics::from_flags(cli);
     let coordinate = parse_runwasm_coordinate(&cmd.package)?;
     let registry_config = RegistryConfig::load();
@@ -138,6 +150,35 @@ pub(crate) fn run_runwasm(cli: &UniversalFlags, cmd: RunWasmSubcommand) -> anyho
         Ok(code)
     } else {
         bail!("Command exited without a return code")
+    }
+}
+
+fn should_run_as_local_package(input: &str) -> anyhow::Result<bool> {
+    let path = Path::new(input);
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => return Ok(false),
+    };
+    if metadata.is_dir() && is_moon_pkg_exist(path) {
+        return Ok(true);
+    }
+
+    bail!("`{input}` is not a package directory")
+}
+
+fn runwasm_as_run_subcommand(cmd: RunWasmSubcommand) -> RunSubcommand {
+    let build_flags = BuildFlags {
+        target: vec![SurfaceTarget::Wasm],
+        ..BuildFlags::default()
+    };
+    RunSubcommand {
+        package_or_mbt_file: Some(cmd.package),
+        command: None,
+        build_flags,
+        args: cmd.args,
+        auto_sync_flags: AutoSyncFlags { frozen: false },
+        build_only: false,
+        profile: false,
     }
 }
 
@@ -359,6 +400,45 @@ mod tests {
 
     fn parse(input: &str) -> RunWasmCoordinate {
         parse_runwasm_coordinate(input).unwrap()
+    }
+
+    #[test]
+    fn local_package_paths_are_run_locally() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("moon.pkg.json"), "{}").unwrap();
+
+        assert!(should_run_as_local_package(dir.path().to_str().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn existing_non_package_paths_are_rejected() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let wasm = dir.path().join("main.wasm");
+        std::fs::write(&wasm, b"\0asmtest").unwrap();
+
+        let err = should_run_as_local_package(wasm.to_str().unwrap()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("`{}` is not a package directory", wasm.to_string_lossy())
+        );
+    }
+
+    #[test]
+    fn mooncakes_coordinates_use_remote_asset_path() {
+        assert!(!should_run_as_local_package("moonbitlang/parser/cmd/moonfmt@0.3.3").unwrap());
+        assert!(!should_run_as_local_package("moonbitlang/parser/cmd/moonfmt").unwrap());
+        assert!(
+            !should_run_as_local_package("missing.mbt").unwrap(),
+            "file extensions alone should not trigger local execution"
+        );
+        assert!(
+            !should_run_as_local_package("missing.mbtx").unwrap(),
+            "file extensions alone should not trigger local execution"
+        );
+        assert!(
+            !should_run_as_local_package("missing.wasm").unwrap(),
+            "file extensions alone should not trigger local execution"
+        );
     }
 
     #[test]
