@@ -145,11 +145,11 @@ declare_async_imports! {
 
     support memory::copy_from_guest => "copy_from_guest",
     native = None,
-    sources = [moonrun:"crates/moonrun/src/async_host.rs"];
+    sources = [moonrun:"crates/moonrun/src/async_host/mod.rs"];
 
     support memory::zero_guest => "zero_guest",
     native = None,
-    sources = [moonrun:"crates/moonrun/src/async_host.rs"];
+    sources = [moonrun:"crates/moonrun/src/async_host/mod.rs"];
 
     native os_error::get_errno => "get_errno",
     native = Some("moonbitlang_async_get_errno"),
@@ -319,6 +319,51 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn native_mapped_imports_have_ported_implementations() {
+        let ported_symbols = crate::async_sys::ported_symbols();
+
+        for import in ASYNC_IMPORTS {
+            if import.kind != AsyncImportKind::NativeMapped {
+                continue;
+            }
+
+            let native_symbol = import
+                .native_symbol
+                .expect("native-mapped import must declare a native symbol");
+            assert!(
+                import.sources.iter().any(|source| {
+                    source.root == SourceRoot::MoonbitAsync
+                        && ported_symbols.iter().any(|ported| {
+                            ported.native_symbol == native_symbol && ported.source == source.path
+                        })
+                }),
+                "async import {} / {} has no Rust port origin",
+                import.wasm_symbol,
+                native_symbol
+            );
+        }
+    }
+
+    #[test]
+    fn ported_implementations_are_registered_imports() {
+        for ported in crate::async_sys::ported_symbols() {
+            assert!(
+                ASYNC_IMPORTS.iter().any(|import| {
+                    import.native_symbol == Some(ported.native_symbol)
+                        && import.sources.iter().any(|source| {
+                            source.root == SourceRoot::MoonbitAsync && source.path == ported.source
+                        })
+                }),
+                "ported symbol {}::{} from {} / {} is not registered",
+                ported.rust_module,
+                ported.rust_symbol,
+                ported.source,
+                ported.native_symbol
+            );
         }
     }
 }

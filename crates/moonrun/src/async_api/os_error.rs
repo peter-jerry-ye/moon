@@ -16,7 +16,8 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use crate::async_host::{AsyncHost, AsyncHostResult};
+use crate::async_host::AsyncHostResult;
+use crate::async_sys::os_error::stub;
 
 use super::context::{callback_context, finish_bool, read_i32_arg};
 
@@ -26,28 +27,27 @@ pub(super) fn get_errno(
     mut ret: v8::ReturnValue,
 ) {
     let context = callback_context(&args);
-    ret.set_int32(context.host.get_errno());
+    ret.set_int32(stub::get_errno(&context.host));
 }
 
 fn is_errno_predicate(
     scope: &mut v8::HandleScope,
     args: &v8::FunctionCallbackArguments,
-    predicate: impl FnOnce(&AsyncHost, i32) -> bool,
+    predicate: impl FnOnce(i32) -> bool,
 ) -> AsyncHostResult<bool> {
     let errno = read_i32_arg(scope, args, 0)?;
-    let context = callback_context(args);
-    Ok(predicate(&context.host, errno))
+    Ok(predicate(errno))
 }
 
 macro_rules! errno_predicate {
-    ($callback:ident, $method:ident) => {
+    ($callback:ident, $function:ident) => {
         pub(super) fn $callback(
             scope: &mut v8::HandleScope,
             args: v8::FunctionCallbackArguments,
             mut ret: v8::ReturnValue,
         ) {
             let context = callback_context(&args);
-            match is_errno_predicate(scope, &args, |host, errno| host.$method(errno)) {
+            match is_errno_predicate(scope, &args, stub::$function) {
                 Ok(value) => finish_bool(&mut ret, value),
                 Err(error) => {
                     context.host.record_error(error);
@@ -68,9 +68,8 @@ errno_predicate!(is_error_notify_enum_dir, is_error_notify_enum_dir);
 
 pub(super) fn get_enotdir(
     _scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
+    _args: v8::FunctionCallbackArguments,
     mut ret: v8::ReturnValue,
 ) {
-    let context = callback_context(&args);
-    ret.set_int32(context.host.enotdir());
+    ret.set_int32(stub::get_enotdir());
 }

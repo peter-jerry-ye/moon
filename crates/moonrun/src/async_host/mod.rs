@@ -17,7 +17,8 @@
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+pub(crate) mod types;
 
 #[cfg(not(any(unix, windows)))]
 compile_error!("moonrun async wasm host currently supports only Unix and Windows hosts");
@@ -294,42 +295,6 @@ pub(crate) struct AsyncHost {
 }
 
 impl AsyncHost {
-    pub(crate) fn platform(&self) -> i32 {
-        #[cfg(windows)]
-        {
-            2
-        }
-        #[cfg(all(unix, target_os = "macos"))]
-        {
-            1
-        }
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            0
-        }
-    }
-
-    pub(crate) fn ms_since_epoch(&self) -> i64 {
-        let duration = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is before the Unix epoch");
-        let unix_ms = duration.as_millis() as i64;
-        #[cfg(windows)]
-        {
-            unix_ms + 11_644_473_600_000
-        }
-        #[cfg(not(windows))]
-        {
-            unix_ms
-        }
-    }
-
-    pub(crate) fn sleep_ms(&self, duration_ms: i32) {
-        if duration_ms > 0 {
-            std::thread::sleep(Duration::from_millis(duration_ms as u64));
-        }
-    }
-
     pub(crate) fn get_errno(&self) -> i32 {
         self.state.lock().unwrap().errno
     }
@@ -381,132 +346,6 @@ impl AsyncHost {
     #[allow(dead_code)]
     pub(crate) fn remove_resource(&self, handle: i32) -> AsyncHostResult<HostResource> {
         self.state.lock().unwrap().resources.remove(handle)
-    }
-
-    pub(crate) fn is_nonblocking_io_error(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::EAGAIN || errno == libc::EINPROGRESS
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::{ERROR_IO_INCOMPLETE, ERROR_IO_PENDING};
-            errno == ERROR_IO_INCOMPLETE as i32 || errno == ERROR_IO_PENDING as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_eintr(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::EINTR
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_enoent(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::ENOENT
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
-            errno == ERROR_FILE_NOT_FOUND as i32 || errno == ERROR_PATH_NOT_FOUND as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_eexist(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::EEXIST
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS};
-            errno == ERROR_FILE_EXISTS as i32 || errno == ERROR_ALREADY_EXISTS as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_eacces(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::EACCES
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
-            errno == ERROR_ACCESS_DENIED as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_econnrefused(&self, errno: i32) -> bool {
-        #[cfg(unix)]
-        {
-            errno == libc::ECONNREFUSED
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::ERROR_CONNECTION_REFUSED;
-            errno == ERROR_CONNECTION_REFUSED as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn is_error_notify_enum_dir(&self, errno: i32) -> bool {
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::ERROR_NOTIFY_ENUM_DIR;
-            errno == ERROR_NOTIFY_ENUM_DIR as i32
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = errno;
-            false
-        }
-    }
-
-    pub(crate) fn enotdir(&self) -> i32 {
-        #[cfg(unix)]
-        {
-            libc::ENOTDIR
-        }
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::Foundation::ERROR_DIRECTORY;
-            ERROR_DIRECTORY as i32
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            native_errno::INVAL
-        }
     }
 }
 

@@ -16,13 +16,12 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use super::context::callback_context;
+use crate::async_sys::internal::event_loop::thread_pool;
 
 pub(super) fn get_platform(
     _scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
+    _args: v8::FunctionCallbackArguments,
     mut ret: v8::ReturnValue,
 ) {
-    let context = callback_context(&args);
-    ret.set_int32(context.host.platform());
+    ret.set_int32(thread_pool::get_platform().as_i32());
 }

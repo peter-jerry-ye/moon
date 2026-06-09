@@ -5,7 +5,9 @@ We will support `moonbitlang/async` on the wasm backend through `#cfg(target="wa
 ## Decisions
 
 - Use a semantic C-stub boundary: `moonbit_v0` symbols map from `moonbitlang_async_*` symbols by stripping that prefix.
-- Keep source provenance next to import registration. Each mapped import declares the async source file and native symbol it tracks, and tests verify the symbol still exists there.
+- Keep source provenance next to import registration and V8-free host implementation. Each mapped import declares the async source file and native symbol it tracks, each active Rust port declares the same origin through the port provenance macro, and tests verify the registry and implementation entries stay in sync. V8 callback modules are adapters only and should not own port provenance.
+- Keep `AsyncHost` focused on shared runtime state, resource tables, guest-memory helpers, and shared ABI representation types. Ported operation behavior belongs in `async_sys`, with `AsyncHost` passed in only when the operation needs shared state.
+- Use monotonic elapsed milliseconds with an unspecified process-local origin for wasm async time. The async timer contract uses differences between readings; the absolute epoch is not meaningful.
 - Support Unix-family and Windows hosts first. Other host families are deliberately compile-time unsupported until the async C-stub parity target is defined for them.
 - Store wasm memory as `moonbit_v0.memory` in the JS glue. The Rust adapter reads that property on each memory-using import instead of registering a separate async `set_memory` callback.
 - Never retain raw wasm-memory pointers after an import returns. Host state may store handles, guest offsets, lengths, and host-owned buffers.

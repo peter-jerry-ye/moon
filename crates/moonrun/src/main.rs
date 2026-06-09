@@ -25,6 +25,7 @@ use v8::V8::set_flags_from_string;
 
 mod async_api;
 mod async_host;
+mod async_sys;
 mod backtrace_api;
 mod demangle_js_template;
 mod fs_api_temp;

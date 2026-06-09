@@ -16,30 +16,5 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use crate::async_host::AsyncHostResult;
-use crate::async_sys::internal::{event_loop::wasm_support, time::time};
-
-use super::context::{callback_context, finish_errno, read_i32_arg};
-
-pub(super) fn get_ms_since_epoch(
-    scope: &mut v8::HandleScope,
-    _args: v8::FunctionCallbackArguments,
-    mut ret: v8::ReturnValue,
-) {
-    let value = v8::BigInt::new_from_i64(scope, time::get_ms_since_epoch());
-    ret.set(value.into());
-}
-
-pub(super) fn sleep_ms(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut ret: v8::ReturnValue,
-) {
-    let context = callback_context(&args);
-    let result = (|| -> AsyncHostResult<()> {
-        let duration_ms = read_i32_arg(scope, &args, 0)?;
-        wasm_support::sleep_ms(duration_ms);
-        Ok(())
-    })();
-    finish_errno(context, &mut ret, result);
-}
+pub(crate) mod event_loop;
+pub(crate) mod time;
