@@ -18,7 +18,7 @@
 
 use crate::v8_builder::ObjectExt;
 
-use super::{context::AsyncContext, event_loop, memory, os_error, time, unsupported};
+use super::{context::AsyncContext, event_loop, fs, memory, os_error, time, unsupported};
 
 pub(crate) const MOONBIT_V0_MODULE: &str = "moonbit_v0";
 #[cfg(test)]
@@ -135,6 +135,22 @@ declare_async_imports! {
     native = Some("moonbitlang_async_get_platform"),
     sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
 
+    native event_loop::errno_is_cancelled => "errno_is_cancelled",
+    native = Some("moonbitlang_async_errno_is_cancelled"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "job_get_ret",
+    native = Some("moonbitlang_async_job_get_ret"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "job_get_err",
+    native = Some("moonbitlang_async_job_get_err"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "make_sleep_job",
+    native = Some("moonbitlang_async_make_sleep_job"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
     native time::get_ms_since_epoch => "get_ms_since_epoch",
     native = Some("moonbitlang_async_get_ms_since_epoch"),
     sources = [moonbit_async:"src/internal/time/time.c"];
@@ -186,6 +202,33 @@ declare_async_imports! {
     native os_error::get_enotdir => "get_ENOTDIR",
     native = Some("moonbitlang_async_get_ENOTDIR"),
     sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native fs::errno_is_lock_violation => "errno_is_lock_violation",
+    native = Some("moonbitlang_async_errno_is_lock_violation"),
+    sources = [moonbit_async:"src/fs/stub.c"];
+
+    unsupported unsupported::i32 => "dir_is_null",
+    native = Some("moonbitlang_async_dir_is_null"),
+    sources = [moonbit_async:"src/fs/stub.c"];
+
+    unsupported unsupported::i32 => "try_lock_file",
+    native = Some("moonbitlang_async_try_lock_file"),
+    sources = [moonbit_async:"src/fs/stub.c"];
+
+    unsupported unsupported::i32 => "unlock_file",
+    native = Some("moonbitlang_async_unlock_file"),
+    sources = [moonbit_async:"src/fs/stub.c"];
+
+    support fs::get_tmp_path_len => "get_tmp_path_len",
+    native = None,
+    sources = [
+        moonbit_async:"src/fs/stub.c",
+        moonrun:"crates/moonrun/src/async_api/fs.rs"
+    ];
+
+    native fs::get_tmp_path => "get_tmp_path",
+    native = Some("moonbitlang_async_get_tmp_path"),
+    sources = [moonbit_async:"src/fs/stub.c"];
 
     unsupported unsupported::i32 => "poll_create",
     native = Some("moonbitlang_async_poll_create"),

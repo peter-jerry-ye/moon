@@ -30,6 +30,8 @@ pub(crate) enum AsyncHostError {
     #[allow(dead_code)]
     Badf,
     NotSupported,
+    #[allow(dead_code)]
+    Native(i32),
 }
 
 pub(crate) type AsyncHostResult<T> = Result<T, AsyncHostError>;
@@ -62,6 +64,7 @@ impl AsyncHostError {
             Self::Inval => native_errno::INVAL,
             Self::Badf => native_errno::BADF,
             Self::NotSupported => native_errno::NOT_SUPPORTED,
+            Self::Native(errno) => errno,
         }
     }
 }

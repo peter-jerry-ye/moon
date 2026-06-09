@@ -16,29 +16,4 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use crate::async_sys::internal::event_loop::thread_pool;
-
-use super::context::{callback_context, finish_bool, read_i32_arg};
-
-pub(super) fn get_platform(
-    _scope: &mut v8::HandleScope,
-    _args: v8::FunctionCallbackArguments,
-    mut ret: v8::ReturnValue,
-) {
-    ret.set_int32(thread_pool::get_platform().as_i32());
-}
-
-pub(super) fn errno_is_cancelled(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut ret: v8::ReturnValue,
-) {
-    let context = callback_context(&args);
-    match read_i32_arg(scope, &args, 0) {
-        Ok(errno) => finish_bool(&mut ret, thread_pool::errno_is_cancelled(errno)),
-        Err(error) => {
-            context.host.record_error(error);
-            finish_bool(&mut ret, false);
-        }
-    }
-}
+pub(crate) mod stub;

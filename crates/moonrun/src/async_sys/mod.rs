@@ -16,6 +16,7 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
+pub(crate) mod fs;
 pub(crate) mod internal;
 pub(crate) mod os_error;
 
@@ -60,6 +61,7 @@ pub(crate) fn ported_symbols() -> Vec<PortedSymbol> {
     let mut symbols = Vec::new();
     symbols.extend_from_slice(internal::event_loop::thread_pool::PORTED_SYMBOLS);
     symbols.extend_from_slice(internal::time::time::PORTED_SYMBOLS);
+    symbols.extend_from_slice(fs::stub::PORTED_SYMBOLS);
     symbols.extend_from_slice(os_error::stub::PORTED_SYMBOLS);
     symbols
 }
