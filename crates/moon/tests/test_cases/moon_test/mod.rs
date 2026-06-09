@@ -533,6 +533,82 @@ fn test_async_test() {
 }
 
 #[test]
+fn test_async_wasm_workspace_timer() {
+    let dir = TestDir::new("moon_test/async_wasm_workspace_timer");
+
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .unwrap()
+        .to_path_buf();
+    let async_dir = repo_root.join("third_party/moonbitlang_async");
+    let async_member = async_dir
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+
+    std::fs::write(
+        dir.join("moon.work"),
+        crate::util::read(dir.join("moon.work.template"))
+            .replace("@@ASYNC_MEMBER@@", &async_member),
+    )
+    .unwrap();
+    std::fs::copy(dir.join("app/moon.mod.template"), dir.join("app/moon.mod")).unwrap();
+
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut build_moonrun = std::process::Command::new(cargo);
+    build_moonrun
+        .current_dir(&repo_root)
+        .args(["build", "--quiet", "-p", "moonrun"]);
+    if !cfg!(debug_assertions) {
+        build_moonrun.arg("--release");
+    }
+    let status = build_moonrun
+        .status()
+        .expect("failed to spawn cargo build for moonrun");
+    assert!(
+        status.success(),
+        "failed to build moonrun for async wasm workspace timer test"
+    );
+
+    let moonrun = {
+        let mut path = std::env::current_exe().unwrap();
+        path.pop();
+        if path.ends_with("deps") {
+            path.pop();
+        }
+        path.join(format!("moonrun{}", std::env::consts::EXE_SUFFIX))
+    };
+    let output = moon_cmd(&dir)
+        .env("MOON_OVERRIDE", moon_bin())
+        .env("MOONRUN_OVERRIDE", &moonrun)
+        .args([
+            "-C",
+            "app/main",
+            "test",
+            "--target",
+            "wasm",
+            "--package",
+            "moon/async_timer_workspace/main",
+            "--sort-input",
+            "--no-parallelize",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    check(
+        std::str::from_utf8(&output).unwrap(),
+        expect![[r#"
+            timer resumed
+            Total tests: 1, passed: 1, failed: 0.
+        "#]],
+    );
+}
+
+#[test]
 fn test_max_concurrent_tests() {
     let dir = TestDir::new("moon_test");
     let out1 = get_stdout(

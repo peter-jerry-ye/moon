@@ -2,7 +2,7 @@
 // This also introduces the dependency on async package
 
 ///|
-#cfg(not(target="wasm-gc"))
+#cfg(not(any(target="wasm", target="wasm-gc")))
 impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn run_async_tests(
   tests,
 ) {
@@ -22,6 +22,17 @@ impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn run_as
     })
     // {COVERAGE_END}
   })
+}
+
+///|
+#cfg(target="wasm")
+impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn run_async_tests(
+  tests,
+) {
+  for f in tests {
+    @moonbitlang/async.run_async_main(f)
+  }
+  // {COVERAGE_END}
 }
 
 ///|
