@@ -16,32 +16,30 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-mod context;
-mod event_loop;
-mod fs;
-mod memory;
-mod os_error;
-mod process;
-mod registry;
-mod socket;
-mod time;
-mod tls;
-mod unsupported;
+use crate::async_host::AsyncHostResult;
 
-use std::any::Any;
+use super::context::{callback_context, finish_errno, read_i32_arg};
 
-use crate::async_host::AsyncHost;
-
-pub(crate) use registry::MOONBIT_V0_MODULE;
-
-pub(crate) fn init_env<'s>(
-    obj: v8::Local<'s, v8::Object>,
-    scope: &mut v8::HandleScope<'s>,
-    dtors: &mut Vec<Box<dyn Any>>,
+pub(super) fn get_ms_since_epoch(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut ret: v8::ReturnValue,
 ) {
-    let context = Box::new(context::AsyncContext::new(scope, obj, AsyncHost::default()));
-    let context_ptr = &*context as *const context::AsyncContext;
-    dtors.push(context);
+    let context = callback_context(&args);
+    let value = v8::BigInt::new_from_i64(scope, context.host.ms_since_epoch());
+    ret.set(value.into());
+}
 
-    registry::register_imports(obj, scope, context_ptr);
+pub(super) fn sleep_ms(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut ret: v8::ReturnValue,
+) {
+    let context = callback_context(&args);
+    let result = (|| -> AsyncHostResult<()> {
+        let duration_ms = read_i32_arg(scope, &args, 0)?;
+        context.host.sleep_ms(duration_ms);
+        Ok(())
+    })();
+    finish_errno(context, &mut ret, result);
 }

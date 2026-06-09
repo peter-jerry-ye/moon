@@ -16,32 +16,4 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-mod context;
-mod event_loop;
-mod fs;
-mod memory;
-mod os_error;
-mod process;
-mod registry;
-mod socket;
-mod time;
-mod tls;
-mod unsupported;
-
-use std::any::Any;
-
-use crate::async_host::AsyncHost;
-
-pub(crate) use registry::MOONBIT_V0_MODULE;
-
-pub(crate) fn init_env<'s>(
-    obj: v8::Local<'s, v8::Object>,
-    scope: &mut v8::HandleScope<'s>,
-    dtors: &mut Vec<Box<dyn Any>>,
-) {
-    let context = Box::new(context::AsyncContext::new(scope, obj, AsyncHost::default()));
-    let context_ptr = &*context as *const context::AsyncContext;
-    dtors.push(context);
-
-    registry::register_imports(obj, scope, context_ptr);
-}
+// Socket support is outside the first async wasm boundary slice.

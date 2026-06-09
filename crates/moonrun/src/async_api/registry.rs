@@ -1,0 +1,324 @@
+// moon: The build system and package manager for MoonBit.
+// Copyright (C) 2024 International Digital Economy Academy
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
+
+use crate::v8_builder::ObjectExt;
+
+use super::{context::AsyncContext, event_loop, memory, os_error, time, unsupported};
+
+pub(crate) const MOONBIT_V0_MODULE: &str = "moonbit_v0";
+#[cfg(test)]
+const NATIVE_ASYNC_PREFIX: &str = "moonbitlang_async_";
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AsyncImportKind {
+    NativeMapped,
+    UnsupportedMvp,
+    WasmSupport,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceRoot {
+    MoonbitAsync,
+    Moonrun,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceLocation {
+    root: SourceRoot,
+    path: &'static str,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AsyncImport {
+    kind: AsyncImportKind,
+    wasm_symbol: &'static str,
+    native_symbol: Option<&'static str>,
+    sources: &'static [SourceLocation],
+}
+
+#[cfg(test)]
+macro_rules! import_kind {
+    (native) => {
+        AsyncImportKind::NativeMapped
+    };
+    (unsupported) => {
+        AsyncImportKind::UnsupportedMvp
+    };
+    (support) => {
+        AsyncImportKind::WasmSupport
+    };
+}
+
+#[cfg(test)]
+macro_rules! source_root {
+    (moonbit_async) => {
+        SourceRoot::MoonbitAsync
+    };
+    (moonrun) => {
+        SourceRoot::Moonrun
+    };
+}
+
+macro_rules! declare_async_imports {
+    ($(
+        $kind:ident $callback:path => $wasm_symbol:literal,
+        native = $native_symbol:expr,
+        sources = [$($source_root:ident:$source_path:literal),+ $(,)?];
+    )*) => {
+        #[cfg(test)]
+        const ASYNC_IMPORTS: &[AsyncImport] = &[
+            $(
+                AsyncImport {
+                    kind: import_kind!($kind),
+                    wasm_symbol: $wasm_symbol,
+                    native_symbol: $native_symbol,
+                    sources: &[
+                        $(
+                            SourceLocation {
+                                root: source_root!($source_root),
+                                path: $source_path,
+                            },
+                        )+
+                    ],
+                },
+            )*
+        ];
+
+        pub(super) fn register_imports<'s>(
+            obj: v8::Local<'s, v8::Object>,
+            scope: &mut v8::HandleScope<'s>,
+            context_ptr: *const AsyncContext,
+        ) {
+            $(
+                register_func_impl(obj, scope, $wasm_symbol, $callback, context_ptr);
+            )*
+        }
+    };
+}
+
+fn register_func_impl<'s>(
+    obj: v8::Local<'s, v8::Object>,
+    scope: &mut v8::HandleScope<'s>,
+    name: &str,
+    callback: impl v8::MapFnTo<v8::FunctionCallback>,
+    context_ptr: *const AsyncContext,
+) {
+    let data = v8::External::new(scope, context_ptr as *mut std::ffi::c_void);
+    let function = v8::Function::builder(callback)
+        .data(data.into())
+        .build(scope)
+        .unwrap();
+    obj.set_value(scope, name, function.into());
+}
+
+declare_async_imports! {
+    native event_loop::get_platform => "get_platform",
+    native = Some("moonbitlang_async_get_platform"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    native time::get_ms_since_epoch => "get_ms_since_epoch",
+    native = Some("moonbitlang_async_get_ms_since_epoch"),
+    sources = [moonbit_async:"src/internal/time/time.c"];
+
+    support time::sleep_ms => "sleep_ms",
+    native = None,
+    sources = [moonbit_async:"src/internal/event_loop/event_loop.wasm.mbt"];
+
+    support memory::copy_from_guest => "copy_from_guest",
+    native = None,
+    sources = [moonrun:"crates/moonrun/src/async_host.rs"];
+
+    support memory::zero_guest => "zero_guest",
+    native = None,
+    sources = [moonrun:"crates/moonrun/src/async_host.rs"];
+
+    native os_error::get_errno => "get_errno",
+    native = Some("moonbitlang_async_get_errno"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_nonblocking_io_error => "is_nonblocking_io_error",
+    native = Some("moonbitlang_async_is_nonblocking_io_error"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_eintr => "is_EINTR",
+    native = Some("moonbitlang_async_is_EINTR"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_enoent => "is_ENOENT",
+    native = Some("moonbitlang_async_is_ENOENT"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_eexist => "is_EEXIST",
+    native = Some("moonbitlang_async_is_EEXIST"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_eacces => "is_EACCES",
+    native = Some("moonbitlang_async_is_EACCES"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_econnrefused => "is_ECONNREFUSED",
+    native = Some("moonbitlang_async_is_ECONNREFUSED"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::is_error_notify_enum_dir => "is_ERROR_NOTIFY_ENUM_DIR",
+    native = Some("moonbitlang_async_is_ERROR_NOTIFY_ENUM_DIR"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    native os_error::get_enotdir => "get_ENOTDIR",
+    native = Some("moonbitlang_async_get_ENOTDIR"),
+    sources = [moonbit_async:"src/os_error/stub.c"];
+
+    unsupported unsupported::i32 => "poll_create",
+    native = Some("moonbitlang_async_poll_create"),
+    sources = [
+        moonbit_async:"src/internal/event_loop/epoll.c",
+        moonbit_async:"src/internal/event_loop/kqueue.c",
+        moonbit_async:"src/internal/event_loop/iocp.c",
+    ];
+
+    unsupported unsupported::i32 => "poll_register",
+    native = Some("moonbitlang_async_poll_register"),
+    sources = [
+        moonbit_async:"src/internal/event_loop/epoll.c",
+        moonbit_async:"src/internal/event_loop/kqueue.c",
+        moonbit_async:"src/internal/event_loop/iocp.c",
+    ];
+
+    unsupported unsupported::i32 => "poll_wait",
+    native = Some("moonbitlang_async_poll_wait"),
+    sources = [
+        moonbit_async:"src/internal/event_loop/epoll.c",
+        moonbit_async:"src/internal/event_loop/kqueue.c",
+        moonbit_async:"src/internal/event_loop/iocp.c",
+    ];
+
+    unsupported unsupported::i32 => "init_thread_pool",
+    native = Some("moonbitlang_async_init_thread_pool"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "make_open_job",
+    native = Some("moonbitlang_async_make_open_job"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "make_read_job",
+    native = Some("moonbitlang_async_make_read_job"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "make_write_job",
+    native = Some("moonbitlang_async_make_write_job"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "make_tcp_socket",
+    native = Some("moonbitlang_async_make_tcp_socket"),
+    sources = [moonbit_async:"src/socket/socket.c"];
+
+    unsupported unsupported::i32 => "make_udp_socket",
+    native = Some("moonbitlang_async_make_udp_socket"),
+    sources = [moonbit_async:"src/socket/socket.c"];
+
+    unsupported unsupported::i32 => "make_spawn_job",
+    native = Some("moonbitlang_async_make_spawn_job"),
+    sources = [moonbit_async:"src/internal/event_loop/thread_pool.c"];
+
+    unsupported unsupported::i32 => "schannel_new",
+    native = Some("moonbitlang_async_schannel_new"),
+    sources = [moonbit_async:"src/tls/schannel.c"];
+
+    unsupported unsupported::i32 => "tls_client_ctx",
+    native = Some("moonbitlang_async_tls_client_ctx"),
+    sources = [moonbit_async:"src/tls/openssl.c"];
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, fs, path::Path};
+
+    use super::*;
+
+    fn repo_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("moonrun crate must live under crates/moonrun")
+    }
+
+    fn source_path(source: SourceLocation) -> std::path::PathBuf {
+        match source.root {
+            SourceRoot::MoonbitAsync => repo_root()
+                .join("third_party/moonbitlang_async")
+                .join(source.path),
+            SourceRoot::Moonrun => repo_root().join(source.path),
+        }
+    }
+
+    #[test]
+    fn wasm_import_names_are_unique() {
+        let mut seen = BTreeSet::new();
+        for import in ASYNC_IMPORTS {
+            assert!(
+                seen.insert(import.wasm_symbol),
+                "duplicate async import {}",
+                import.wasm_symbol
+            );
+        }
+    }
+
+    #[test]
+    fn native_async_symbols_map_by_stripping_namespace_prefix() {
+        for import in ASYNC_IMPORTS {
+            let Some(native_symbol) = import.native_symbol else {
+                assert_eq!(import.kind, AsyncImportKind::WasmSupport);
+                continue;
+            };
+            let suffix = native_symbol
+                .strip_prefix(NATIVE_ASYNC_PREFIX)
+                .expect("native async mapping must use the async C namespace");
+            assert_eq!(import.wasm_symbol, suffix);
+            assert!(!import.wasm_symbol.starts_with("async_"));
+        }
+    }
+
+    #[test]
+    fn declared_sources_exist_and_contain_native_symbols() {
+        for import in ASYNC_IMPORTS {
+            assert!(
+                !import.sources.is_empty(),
+                "async import {} must declare source files",
+                import.wasm_symbol
+            );
+            for source in import.sources {
+                let source_path = source_path(*source);
+                let contents = fs::read_to_string(&source_path)
+                    .unwrap_or_else(|error| panic!("failed to read {:?}: {error}", source_path));
+                if let Some(native_symbol) = import.native_symbol {
+                    assert!(
+                        contents.contains(native_symbol),
+                        "{:?} does not contain native symbol {} for wasm import {}",
+                        source_path,
+                        native_symbol,
+                        import.wasm_symbol
+                    );
+                }
+            }
+        }
+    }
+}

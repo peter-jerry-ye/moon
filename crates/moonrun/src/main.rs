@@ -25,7 +25,6 @@ use v8::V8::set_flags_from_string;
 
 mod async_api;
 mod async_host;
-mod async_manifest;
 mod backtrace_api;
 mod demangle_js_template;
 mod fs_api_temp;
@@ -387,7 +386,7 @@ fn init_env(
     }
 
     {
-        let async_runtime = global_proxy.child(scope, async_manifest::MOONBIT_V0_MODULE);
+        let async_runtime = global_proxy.child(scope, async_api::MOONBIT_V0_MODULE);
         async_api::init_env(async_runtime, scope, dtors);
     }
 

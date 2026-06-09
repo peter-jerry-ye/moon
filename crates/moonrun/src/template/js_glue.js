@@ -412,7 +412,6 @@ const console = {
 };
 const ffiBytesMemory = new WebAssembly.Memory({ initial: 1 });
 let wasiMemoryInitialized = false;
-let asyncMemoryInitialized = false;
 const wasi_snapshot_preview1 = {};
 for (const [key, value] of Object.entries(__moonbit_wasi_unstable)) {
     if (typeof value !== "function") {
@@ -428,21 +427,6 @@ for (const [key, value] of Object.entries(__moonbit_wasi_unstable)) {
         return value(...args);
     };
 }
-const moonbit_v0_imports = {};
-for (const [key, value] of Object.entries(moonbit_v0)) {
-    if (typeof value !== "function") {
-        moonbit_v0_imports[key] = value;
-        continue;
-    }
-    moonbit_v0_imports[key] = (...args) => {
-        if (key !== "set_memory" && !asyncMemoryInitialized) {
-            throw new Error(
-                "moonbit_v0 memory is not initialized before import call"
-            );
-        }
-        return value(...args);
-    };
-}
 const spectest = {
     spectest: {
         print_char: (x) => print(x),
@@ -453,7 +437,7 @@ const spectest = {
     __moonbit_io_unstable: __moonbit_io_unstable,
     __moonbit_sys_unstable: __moonbit_sys_unstable,
     __moonbit_time_unstable: __moonbit_time_unstable,
-    moonbit_v0: moonbit_v0_imports,
+    moonbit_v0: moonbit_v0,
     wasi_snapshot_preview1: wasi_snapshot_preview1,
     moonbit: {
         string_to_js_string() {
@@ -524,14 +508,7 @@ function setAsyncMemory(memory) {
     if (!(memory instanceof WebAssembly.Memory)) {
         throw new Error("moonbit_v0 requires an exported `memory`");
     }
-    if (typeof moonbit_v0.set_memory !== "function") {
-        throw new Error("moonbit_v0 host missing `set_memory`");
-    }
-    const errno = moonbit_v0.set_memory(memory);
-    if (errno !== 0) {
-        throw new Error(`moonbit_v0 set_memory failed: errno ${errno}`);
-    }
-    asyncMemoryInitialized = true;
+    moonbit_v0.memory = memory;
 }
 
 try {
@@ -575,7 +552,7 @@ try {
         const memory = instance.exports.memory;
         if (memory instanceof WebAssembly.Memory) {
             setAsyncMemory(memory);
-        } else if (!asyncMemoryInitialized) {
+        } else if (!(moonbit_v0.memory instanceof WebAssembly.Memory)) {
             throw new Error(
                 "moonbit_v0 requires an exported or imported WebAssembly.Memory"
             );
