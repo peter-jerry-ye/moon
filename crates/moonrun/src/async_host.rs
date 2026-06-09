@@ -19,6 +19,9 @@
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(not(any(unix, windows)))]
+compile_error!("moonrun async wasm host currently supports only Unix and Windows hosts");
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AsyncHostError {
     Fault,
@@ -49,14 +52,6 @@ mod native_errno {
     pub(crate) const FAULT: i32 = ERROR_INVALID_ADDRESS as i32;
     pub(crate) const INVAL: i32 = ERROR_INVALID_PARAMETER as i32;
     pub(crate) const NOT_SUPPORTED: i32 = ERROR_CALL_NOT_IMPLEMENTED as i32;
-}
-
-#[cfg(not(any(unix, windows)))]
-mod native_errno {
-    pub(crate) const BADF: i32 = 9;
-    pub(crate) const FAULT: i32 = 14;
-    pub(crate) const INVAL: i32 = 22;
-    pub(crate) const NOT_SUPPORTED: i32 = 38;
 }
 
 impl AsyncHostError {
@@ -300,11 +295,17 @@ pub(crate) struct AsyncHost {
 
 impl AsyncHost {
     pub(crate) fn platform(&self) -> i32 {
-        match std::env::consts::OS {
-            "linux" => 0,
-            "macos" => 1,
-            "windows" => 2,
-            _ => 0,
+        #[cfg(windows)]
+        {
+            2
+        }
+        #[cfg(all(unix, target_os = "macos"))]
+        {
+            1
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            0
         }
     }
 

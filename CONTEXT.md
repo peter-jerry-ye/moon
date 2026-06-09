@@ -34,6 +34,7 @@ _Avoid_: Cached raw wasm pointer
 - `moonrun` keeps V8 as the first adapter, but async host state remains outside V8 types.
 - `moonbit_v0` imports strip the native `moonbitlang_async_` prefix and do not add an `async_` prefix.
 - Native C stubs are the semantic reference. Rust code should stay structurally close to the source files, but it does not link against `moonbit.h` object layouts.
+- The async wasm host currently supports only Unix-family and Windows hosts. Other host families are compile-time unsupported.
 - Variable-length data crosses the boundary through guest offsets and explicit lengths. Async jobs store host-owned buffers plus guest offsets, then copy into freshly reacquired guest memory during a later host call.
 - V8 memory growth can replace the observable memory backing store. The runtime must not lend guest pointers to OS APIs that need pinned buffers across `memory.grow`; use host-owned pinned buffers and copy to/from wasm memory instead.
 - Windows APIs that require stable buffers should receive host-owned memory, not raw wasm memory. This includes overlapped IO and other APIs where the OS may retain a pointer until asynchronous completion.
