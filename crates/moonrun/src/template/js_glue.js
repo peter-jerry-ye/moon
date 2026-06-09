@@ -143,6 +143,7 @@ const __moonbit_backtrace_runtime = globalThis.__moonbit_backtrace_runtime || {
 })(__moonbit_fs_unstable, __moonbit_run_env);
 
 const __moonbit_wasi_unstable = globalThis.__moonbit_wasi_unstable || {};
+const moonbit_v0 = globalThis.moonbit_v0 || {};
 
 delete globalThis.__moonbit_run_env;
 delete globalThis.__moonbit_backtrace_runtime;
@@ -411,6 +412,7 @@ const console = {
 };
 const ffiBytesMemory = new WebAssembly.Memory({ initial: 1 });
 let wasiMemoryInitialized = false;
+let asyncMemoryInitialized = false;
 const wasi_snapshot_preview1 = {};
 for (const [key, value] of Object.entries(__moonbit_wasi_unstable)) {
     if (typeof value !== "function") {
@@ -426,6 +428,21 @@ for (const [key, value] of Object.entries(__moonbit_wasi_unstable)) {
         return value(...args);
     };
 }
+const moonbit_v0_imports = {};
+for (const [key, value] of Object.entries(moonbit_v0)) {
+    if (typeof value !== "function") {
+        moonbit_v0_imports[key] = value;
+        continue;
+    }
+    moonbit_v0_imports[key] = (...args) => {
+        if (key !== "set_memory" && !asyncMemoryInitialized) {
+            throw new Error(
+                "moonbit_v0 memory is not initialized before import call"
+            );
+        }
+        return value(...args);
+    };
+}
 const spectest = {
     spectest: {
         print_char: (x) => print(x),
@@ -436,6 +453,7 @@ const spectest = {
     __moonbit_io_unstable: __moonbit_io_unstable,
     __moonbit_sys_unstable: __moonbit_sys_unstable,
     __moonbit_time_unstable: __moonbit_time_unstable,
+    moonbit_v0: moonbit_v0_imports,
     wasi_snapshot_preview1: wasi_snapshot_preview1,
     moonbit: {
         string_to_js_string() {
@@ -502,6 +520,20 @@ function setWasiMemory(memory) {
     wasiMemoryInitialized = true;
 }
 
+function setAsyncMemory(memory) {
+    if (!(memory instanceof WebAssembly.Memory)) {
+        throw new Error("moonbit_v0 requires an exported `memory`");
+    }
+    if (typeof moonbit_v0.set_memory !== "function") {
+        throw new Error("moonbit_v0 host missing `set_memory`");
+    }
+    const errno = moonbit_v0.set_memory(memory);
+    if (errno !== 0) {
+        throw new Error(`moonbit_v0 set_memory failed: errno ${errno}`);
+    }
+    asyncMemoryInitialized = true;
+}
+
 try {
     if (typeof bytes === 'undefined') {
         bytes = read_file_to_bytes(module_name);
@@ -514,10 +546,18 @@ try {
     const moduleExports = WebAssembly.Module.exports(module);
     const usesWasiSnapshotPreview1 = moduleImports
         .some(importItem => importItem.module === "wasi_snapshot_preview1");
+    const usesMoonBitV0 = moduleImports
+        .some(importItem => importItem.module === "moonbit_v0");
     if (usesWasiSnapshotPreview1) {
         const importedMemory = findImportedMemory(moduleImports, moduleExports, spectest);
         if (importedMemory instanceof WebAssembly.Memory) {
             setWasiMemory(importedMemory);
+        }
+    }
+    if (usesMoonBitV0) {
+        const importedMemory = findImportedMemory(moduleImports, moduleExports, spectest);
+        if (importedMemory instanceof WebAssembly.Memory) {
+            setAsyncMemory(importedMemory);
         }
     }
     let instance = new WebAssembly.Instance(module, spectest);
@@ -528,6 +568,16 @@ try {
         } else if (!wasiMemoryInitialized) {
             throw new Error(
                 "wasi_snapshot_preview1 requires an exported or imported WebAssembly.Memory"
+            );
+        }
+    }
+    if (usesMoonBitV0) {
+        const memory = instance.exports.memory;
+        if (memory instanceof WebAssembly.Memory) {
+            setAsyncMemory(memory);
+        } else if (!asyncMemoryInitialized) {
+            throw new Error(
+                "moonbit_v0 requires an exported or imported WebAssembly.Memory"
             );
         }
     }

@@ -2,7 +2,7 @@
 // This also introduces the dependency on async package
 
 ///|
-#cfg(not(any(target="wasm", target="wasm-gc")))
+#cfg(not(target="wasm-gc"))
 impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn run_async_tests(
   tests,
 ) {
@@ -25,7 +25,7 @@ impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn run_as
 }
 
 ///|
-#cfg(not(any(target="wasm", target="wasm-gc")))
+#cfg(not(target="wasm-gc"))
 impl MoonBit_Async_Test_Driver for MoonBit_Async_Test_Driver_Impl with fn is_being_cancelled() {
   @moonbitlang/async.is_being_cancelled()
 }
