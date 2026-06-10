@@ -203,6 +203,70 @@ declare_async_imports! {
     native = Some("moonbitlang_async_get_ENOTDIR"),
     sources = [moonbit_async:"src/os_error/stub.c"];
 
+    unsupported unsupported::i32 => "get_invalid_handle",
+    native = Some("moonbitlang_async_get_invalid_handle"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "close_fd",
+    native = Some("moonbitlang_async_close_fd"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "fd_is_nonblocking",
+    native = Some("moonbitlang_async_fd_is_nonblocking"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "set_blocking",
+    native = Some("moonbitlang_async_set_blocking"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "set_nonblocking",
+    native = Some("moonbitlang_async_set_nonblocking"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "set_cloexec",
+    native = Some("moonbitlang_async_set_cloexec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "create_named_pipe_server",
+    native = Some("moonbitlang_async_create_named_pipe_server"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "create_named_pipe_client",
+    native = Some("moonbitlang_async_create_named_pipe_client"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "pipe",
+    native = Some("moonbitlang_async_pipe"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "sizeof_file_time",
+    native = Some("moonbitlang_async_sizeof_file_time"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_atime_sec",
+    native = Some("moonbitlang_async_get_atime_sec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_atime_nsec",
+    native = Some("moonbitlang_async_get_atime_nsec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_mtime_sec",
+    native = Some("moonbitlang_async_get_mtime_sec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_mtime_nsec",
+    native = Some("moonbitlang_async_get_mtime_nsec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_ctime_sec",
+    native = Some("moonbitlang_async_get_ctime_sec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
+    unsupported unsupported::i32 => "get_ctime_nsec",
+    native = Some("moonbitlang_async_get_ctime_nsec"),
+    sources = [moonbit_async:"src/internal/fd_util/stub.c"];
+
     native fs::errno_is_lock_violation => "errno_is_lock_violation",
     native = Some("moonbitlang_async_errno_is_lock_violation"),
     sources = [moonbit_async:"src/fs/stub.c"];
