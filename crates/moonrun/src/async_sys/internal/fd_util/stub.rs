@@ -127,7 +127,9 @@ ported_fns! {
     #[allow(dead_code)]
     pub(crate) fn create_named_pipe_server(name: &std::ffi::OsStr, is_async: bool) -> RawFd {
         use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
+        };
         use windows_sys::Win32::System::Pipes::{
             CreateNamedPipeW, PIPE_ACCESS_OUTBOUND, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
             PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
@@ -136,7 +138,7 @@ ported_fns! {
         let mut name: Vec<u16> = name.encode_wide().collect();
         name.push(0);
         let flags = PIPE_ACCESS_OUTBOUND
-            | windows_sys::Win32::System::Pipes::FILE_FLAG_FIRST_PIPE_INSTANCE
+            | FILE_FLAG_FIRST_PIPE_INSTANCE
             | if is_async { FILE_FLAG_OVERLAPPED } else { 0 };
         unsafe {
             CreateNamedPipeW(
@@ -235,7 +237,7 @@ ported_fns! {
     pub(crate) fn get_atime_nsec(file_time: &FileTime) -> i32 {
         #[cfg(windows)]
         {
-            filetime_nsec(file_time.LastAccessTime.QuadPart())
+            ((file_time.LastAccessTime.QuadPart() % 10_000_000) * 100) as i32
         }
         #[cfg(unix)]
         {
@@ -267,7 +269,7 @@ ported_fns! {
     pub(crate) fn get_mtime_nsec(file_time: &FileTime) -> i32 {
         #[cfg(windows)]
         {
-            filetime_nsec(file_time.LastWriteTime.QuadPart())
+            ((file_time.LastWriteTime.QuadPart() % 10_000_000) * 100) as i32
         }
         #[cfg(unix)]
         {
@@ -299,7 +301,7 @@ ported_fns! {
     pub(crate) fn get_ctime_nsec(file_time: &FileTime) -> i32 {
         #[cfg(windows)]
         {
-            filetime_nsec(file_time.ChangeTime.QuadPart())
+            ((file_time.ChangeTime.QuadPart() % 10_000_000) * 100) as i32
         }
         #[cfg(unix)]
         {
@@ -325,11 +327,6 @@ fn fcntl_setfl(fd: RawFd, flags: i32) -> AsyncHostResult<()> {
     } else {
         Ok(())
     }
-}
-
-#[cfg(windows)]
-fn filetime_nsec(value: i64) -> i32 {
-    ((value % 10_000_000) * 100) as i32
 }
 
 fn last_native_error() -> AsyncHostError {

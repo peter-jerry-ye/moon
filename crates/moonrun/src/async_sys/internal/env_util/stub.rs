@@ -16,9 +16,25 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-pub(crate) mod c_buffer;
-pub(crate) mod env_util;
-pub(crate) mod event_loop;
-pub(crate) mod fd_util;
-pub(crate) mod os_string;
-pub(crate) mod time;
+use crate::async_sys::ported_fns;
+
+ported_fns! {
+    #[ported(
+        source = "src/internal/env_util/stub.c",
+        original = "moonbitlang_async_getpid"
+    )]
+    #[allow(dead_code)]
+    pub(crate) fn get_pid() -> u32 {
+        std::process::id()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_pid_matches_current_process() {
+        assert_eq!(get_pid(), std::process::id());
+    }
+}

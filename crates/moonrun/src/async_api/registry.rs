@@ -267,6 +267,38 @@ declare_async_imports! {
     native = Some("moonbitlang_async_get_ctime_nsec"),
     sources = [moonbit_async:"src/internal/fd_util/stub.c"];
 
+    unsupported unsupported::i32 => "getpid",
+    native = Some("moonbitlang_async_getpid"),
+    sources = [moonbit_async:"src/internal/env_util/stub.c"];
+
+    unsupported unsupported::i32 => "blit_to_c",
+    native = Some("moonbitlang_async_blit_to_c"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "blit_from_c",
+    native = Some("moonbitlang_async_blit_from_c"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "c_buffer_get",
+    native = Some("moonbitlang_async_c_buffer_get"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "strlen",
+    native = Some("moonbitlang_async_strlen"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "null_pointer",
+    native = Some("moonbitlang_async_null_pointer"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "pointer_is_null",
+    native = Some("moonbitlang_async_pointer_is_null"),
+    sources = [moonbit_async:"src/internal/c_buffer/stub.c"];
+
+    unsupported unsupported::i32 => "c_buffer_as_string",
+    native = Some("moonbitlang_async_c_buffer_as_string"),
+    sources = [moonbit_async:"src/internal/os_string/stub.c"];
+
     native fs::errno_is_lock_violation => "errno_is_lock_violation",
     native = Some("moonbitlang_async_errno_is_lock_violation"),
     sources = [moonbit_async:"src/fs/stub.c"];

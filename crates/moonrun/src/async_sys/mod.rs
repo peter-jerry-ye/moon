@@ -59,8 +59,11 @@ pub(crate) use ported_fns;
 #[cfg(test)]
 pub(crate) fn ported_symbols() -> Vec<PortedSymbol> {
     let mut symbols = Vec::new();
+    symbols.extend_from_slice(internal::c_buffer::stub::PORTED_SYMBOLS);
+    symbols.extend_from_slice(internal::env_util::stub::PORTED_SYMBOLS);
     symbols.extend_from_slice(internal::fd_util::stub::PORTED_SYMBOLS);
     symbols.extend_from_slice(internal::event_loop::thread_pool::PORTED_SYMBOLS);
+    symbols.extend_from_slice(internal::os_string::stub::PORTED_SYMBOLS);
     symbols.extend_from_slice(internal::time::time::PORTED_SYMBOLS);
     symbols.extend_from_slice(fs::stub::PORTED_SYMBOLS);
     symbols.extend_from_slice(os_error::stub::PORTED_SYMBOLS);
