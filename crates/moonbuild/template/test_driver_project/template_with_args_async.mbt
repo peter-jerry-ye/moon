@@ -11,6 +11,7 @@ impl MoonBit_Test_Driver for MoonBit_Test_Driver_Internal_Async_With_Args with f
   async_tests,
   filename,
   index,
+  handle_start,
   handle_result,
   error_to_string,
 ) {
@@ -26,6 +27,7 @@ impl MoonBit_Test_Driver for MoonBit_Test_Driver_Internal_Async_With_Args with f
       }
     }
     async_tests.push(() => {
+      handle_start()
       try f(@moonbitlang/core/test.new(name)) catch {
         err if MoonBit_Async_Test_Driver_Impl::is_being_cancelled() => raise err
         err => handle_result(name, error_to_string(err), false)
