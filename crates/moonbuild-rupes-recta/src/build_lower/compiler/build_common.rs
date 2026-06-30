@@ -24,10 +24,14 @@ use std::path::{Path, PathBuf};
 use moonutil::common::TargetBackend;
 
 use crate::build_lower::compiler::{
-    CompiledPackageName, ErrorFormat, MOONC_DENY_WARNING_SET, MOONC_SUPPRESS_WARNING_SET,
-    MiDependency, VirtualPackageImplementation, WarnAlertConfig,
+    CompiledPackageName, ErrorFormat, MiDependency, VirtualPackageImplementation, WarnAlertConfig,
 };
 use crate::model::TargetKind;
+
+/// `moonc -w` is a compact expression language. Keep these tokens private to
+/// warning emission so callers do not need to know compiler warning ordering.
+const MOONC_DENY_WARNING_SET: &str = "@a";
+const MOONC_SUPPRESS_WARNING_SET: &str = "-a";
 
 /// Required (non-default) fields shared between different build-like commands of `moonc`
 #[derive(Debug)]
@@ -225,12 +229,21 @@ impl<'a> BuildCommonConfig<'a> {
         }
     }
 
-    /// Add custom warning list arguments
-    pub(crate) fn add_custom_warn_list(&self, args: &mut Vec<String>) {
-        if let WarnAlertConfig::List(warn_list) = &self.warn_config
-            && !warn_list.is_empty()
-        {
-            args.extend(["-w".to_string(), warn_list.to_string()]);
+    /// Add the warning selection expression, with deny promotion appended last
+    /// when `--deny-warn` is enabled.
+    pub(crate) fn add_warning_options(&self, args: &mut Vec<String>) {
+        let mut warn_list = match &self.warn_config {
+            WarnAlertConfig::Default => String::new(),
+            WarnAlertConfig::List(warn_list) => warn_list.to_string(),
+            WarnAlertConfig::Suppress => MOONC_SUPPRESS_WARNING_SET.to_string(),
+        };
+        if self.deny_warn {
+            // `moonc -w` parses the list left-to-right. `@a` promotes active
+            // warnings to errors, so it must come after opt-ins like `+missing_doc`.
+            warn_list.push_str(MOONC_DENY_WARNING_SET);
+        }
+        if !warn_list.is_empty() {
+            args.extend(["-w".to_string(), warn_list]);
         }
     }
 
@@ -252,20 +265,6 @@ impl<'a> BuildCommonConfig<'a> {
     pub(crate) fn add_virtual_package_check(&self, args: &mut Vec<String>) {
         if let Some(check_mi_path) = &self.check_mi {
             args.extend(["-check-mi".to_string(), check_mi_path.display().to_string()]);
-        }
-    }
-
-    /// Add warning/alert deny all arguments (combined)
-    pub(crate) fn add_deny_all(&self, args: &mut Vec<String>) {
-        if self.deny_warn {
-            args.extend(["-w".to_string(), MOONC_DENY_WARNING_SET.to_string()]);
-        }
-    }
-
-    /// Add warning/alert allow all arguments
-    pub(crate) fn add_warn_alert_allow_all(&self, args: &mut Vec<String>) {
-        if matches!(self.warn_config, WarnAlertConfig::Suppress) {
-            args.extend(["-w".to_string(), MOONC_SUPPRESS_WARNING_SET.into()]);
         }
     }
 
@@ -334,5 +333,52 @@ impl<'a> BuildCommonConfig<'a> {
         if self.value_tracing {
             args.push("-enable-value-tracing".to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::*;
+
+    fn warning_args(warn_config: WarnAlertConfig<'_>, deny_warn: bool) -> Vec<String> {
+        let mut args = Vec::new();
+        BuildCommonConfig {
+            warn_config,
+            deny_warn,
+            ..BuildCommonConfig::default()
+        }
+        .add_warning_options(&mut args);
+        args
+    }
+
+    #[test]
+    fn warning_options_omit_default_selection() {
+        assert!(warning_args(WarnAlertConfig::Default, false).is_empty());
+    }
+
+    #[test]
+    fn warning_options_deny_default_selection() {
+        assert_eq!(
+            warning_args(WarnAlertConfig::Default, true),
+            vec!["-w".to_string(), "@a".to_string()]
+        );
+    }
+
+    #[test]
+    fn warning_options_append_deny_after_custom_selection() {
+        assert_eq!(
+            warning_args(WarnAlertConfig::List(Cow::Borrowed("+missing_doc")), true),
+            vec!["-w".to_string(), "+missing_doc@a".to_string()]
+        );
+    }
+
+    #[test]
+    fn warning_options_keep_suppression_before_deny() {
+        assert_eq!(
+            warning_args(WarnAlertConfig::Suppress, true),
+            vec!["-w".to_string(), "-a@a".to_string()]
+        );
     }
 }

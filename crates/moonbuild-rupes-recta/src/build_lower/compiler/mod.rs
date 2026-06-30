@@ -238,8 +238,3 @@ pub(super) trait CmdlineAbstraction {
         args
     }
 }
-
-/// The warning list to use when denying all warnings.
-pub(crate) const MOONC_DENY_WARNING_SET: &str = "@a";
-/// The warning list to use when suppressing all warnings.
-pub(crate) const MOONC_SUPPRESS_WARNING_SET: &str = "-a";
