@@ -96,6 +96,7 @@ fn run_fmt_rr(cli: &UniversalFlags, cmd: FmtSubcommand) -> anyhow::Result<i32> {
         &target_dir,
         &selected_packages,
         &project_manifest,
+        cli.dry_run,
     )?;
     for message in &user_warnings {
         output.user_message(message);

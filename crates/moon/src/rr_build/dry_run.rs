@@ -46,6 +46,9 @@ pub fn print_dry_run(input: &BuildInput, source_dir: &Path, target_dir: &Path) {
                 target_dir,
             );
         }
+        Some(DryRunPlan::Fmt(_)) => {
+            panic!("fmt dry-run plan cannot be printed as a build dry-run");
+        }
         None => {
             panic!("build dry-run plan should be available");
         }
@@ -71,14 +74,24 @@ pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Pat
                 target_dir,
             );
         }
-        None => {
-            let default_files = input.graph.get_start_nodes();
-            moonbuild::dry_run::print_build_commands(
-                &input.graph,
-                &default_files,
+        Some(DryRunPlan::Fmt(fmt_plan)) => {
+            let commands = fmt_plan.dry_run_commands();
+            print_commands(
+                commands
+                    .iter()
+                    .map(|command| DryRunCommand {
+                        command: Some(command.commandline()),
+                        command_kind: DryRunCommandKind::Argv,
+                        inputs: command.inputs(),
+                        outputs: command.outputs(),
+                    })
+                    .collect(),
                 source_dir,
                 target_dir,
             );
+        }
+        None => {
+            panic!("dry-run plan should be available");
         }
     }
 }

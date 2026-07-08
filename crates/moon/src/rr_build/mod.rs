@@ -41,7 +41,7 @@ use moonbuild_rupes_recta::{
     CompileConfig, ResolveConfig, ResolveOutput,
     build_lower::{LoweredBuild, LoweringEnvironment, WarningCondition},
     build_plan::InputDirective,
-    fmt::{FmtConfig, FmtResolveOutput},
+    fmt::{FmtConfig, FmtDryRun, FmtResolveOutput},
     intent::UserIntent,
     model::{
         Artifacts, BuildPlanNode, DirectNativeMode, NativeBackendMode, NativeTarget, PackageId,
@@ -683,13 +683,15 @@ pub fn plan_fmt(
     target_dir: &Path,
     selected_packages: &[PackageId],
     project_manifest: &ProjectManifest,
+    capture_dry_run: bool,
 ) -> anyhow::Result<(BuildInput, Vec<UserWarning>)> {
-    let (graph, user_warnings) = moonbuild_rupes_recta::fmt::build_graph_for_fmt(
+    let fmt_output = moonbuild_rupes_recta::fmt::build_graph_for_fmt(
         resolved,
         cfg,
         target_dir,
         selected_packages,
         project_manifest,
+        capture_dry_run,
     )?;
     let layout = TargetLayout::from_fmt_resolve_output(
         target_dir.to_path_buf(),
@@ -698,12 +700,12 @@ pub fn plan_fmt(
     );
     let db_path = layout.n2_db_path(TargetBackend::default());
     let input = BuildInput {
-        graph,
-        dry_run_plan: None,
+        graph: fmt_output.graph,
+        dry_run_plan: fmt_output.dry_run.map(DryRunPlan::Fmt),
         command_args_by_output: Default::default(),
         db_path,
     };
-    Ok((input, user_warnings))
+    Ok((input, fmt_output.user_warnings))
 }
 
 /// Check if we can actually run `tcc -run`.
@@ -938,6 +940,7 @@ impl Default for BuildConfig {
 #[derive(Debug, Clone)]
 enum DryRunPlan {
     Build(LoweredBuild),
+    Fmt(FmtDryRun),
 }
 
 /// The input to a build execution.
