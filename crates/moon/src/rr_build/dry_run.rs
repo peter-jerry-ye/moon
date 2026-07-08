@@ -20,7 +20,8 @@
 
 use std::{path::Path, process::Command};
 
-use moonbuild::dry_run::{DryRunCommand, PathNormalizer};
+use moonbuild::dry_run::{DryRunCommand, DryRunCommandKind, PathNormalizer};
+use moonbuild_rupes_recta::build_lower::LoweredCommandKind;
 
 use crate::rr_build::{BuildInput, DryRunPlan};
 
@@ -36,6 +37,7 @@ pub fn print_dry_run(input: &BuildInput, source_dir: &Path, target_dir: &Path) {
                     .iter()
                     .map(|command| DryRunCommand {
                         command: Some(command.commandline()),
+                        command_kind: dry_run_command_kind(command.command_kind()),
                         inputs: command.inputs(),
                         outputs: command.outputs(),
                     })
@@ -63,6 +65,7 @@ pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Pat
                     .iter()
                     .map(|command| DryRunCommand {
                         command: Some(command.commandline()),
+                        command_kind: dry_run_command_kind(command.command_kind()),
                         inputs: command.inputs(),
                         outputs: command.outputs(),
                     })
@@ -78,6 +81,7 @@ pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Pat
                     .iter()
                     .map(|command| DryRunCommand {
                         command: Some(command.commandline()),
+                        command_kind: DryRunCommandKind::Argv,
                         inputs: command.inputs(),
                         outputs: command.outputs(),
                     })
@@ -95,12 +99,19 @@ pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Pat
 fn print_commands<'a>(commands: Vec<DryRunCommand<'a>>, source_dir: &Path, target_dir: &Path) {
     let replacer = PathNormalizer::new_with_target_dir(source_dir, target_dir);
     for command in &commands {
-        if let Some(commandline) = command.command {
-            println!("{}", replacer.normalize_command(commandline));
+        if let Some(commandline) = command.normalized_command(&replacer) {
+            println!("{}", commandline);
         }
     }
 
     moonbuild::dry_run::try_debug_dump_commands_to_file(commands, source_dir, target_dir);
+}
+
+fn dry_run_command_kind(kind: LoweredCommandKind) -> DryRunCommandKind {
+    match kind {
+        LoweredCommandKind::Argv => DryRunCommandKind::Argv,
+        LoweredCommandKind::Shell => DryRunCommandKind::Shell,
+    }
 }
 
 /// Print a command as it would be executed, with the proper escaping.

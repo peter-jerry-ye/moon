@@ -1442,3 +1442,22 @@ impl<'a> LoweringContext<'a> {
         deps
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::build_lower::LoweredCommandKind;
+
+    use super::*;
+
+    #[test]
+    fn dsymutil_follow_up_is_captured_as_shell_command() {
+        let commandline =
+            commandline_with_dsymutil(&["cc".into(), "-o".into(), "main".into()], "main");
+
+        assert!(matches!(commandline, Commandline::Verbatim(_)));
+        assert_eq!(
+            commandline.lowered_command_kind(),
+            LoweredCommandKind::Shell
+        );
+    }
+}

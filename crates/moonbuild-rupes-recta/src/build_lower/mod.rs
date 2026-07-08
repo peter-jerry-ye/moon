@@ -43,7 +43,7 @@ mod lower_build;
 mod lowered_build;
 mod utils;
 
-pub use lowered_build::{LoweredBuild, LoweredCommand};
+pub use lowered_build::{LoweredBuild, LoweredCommand, LoweredCommandKind};
 pub use utils::{build_ins, build_n2_fileloc, build_outs};
 
 pub(crate) use backend::{CExecutableRealization, CStubLibraryRealization, SelectedBackend};
@@ -242,10 +242,10 @@ pub struct LoweringResult {
 /// For most build commands, this is not an issue. All executables and argument
 /// paths are absolute paths, and there's no shell features involved.
 ///
-/// However, for prebuild commands, the commandline is expected to be copied
-/// verbatim (with minimal resolving) to the generated build script. Thus,
-/// splitting, resolving and quoting again may lead to e.g. shell features being
-/// lost.
+/// However, follow-up tool invocations such as `dsymutil` rely on shell
+/// composition to run only after the preceding command succeeds. Splitting,
+/// resolving, and quoting those command strings as argv would turn shell
+/// control operators into plain arguments.
 ///
 /// Thus, we're currently providing a `Verbatim` variant to handle such cases.
 ///
@@ -268,7 +268,7 @@ enum Commandline {
     /// Use with caution.
     ///
     /// This variant is used for commands that intentionally rely on shell
-    /// composition, such as prebuild commands and follow-up tool invocations.
+    /// composition, such as follow-up tool invocations.
     Verbatim(String),
 }
 
@@ -286,6 +286,13 @@ impl Commandline {
                 moonutil::shlex::join_native(args.iter().map(|x| x.as_str()))
             }
             Commandline::Verbatim(s) => s.clone(),
+        }
+    }
+
+    fn lowered_command_kind(&self) -> LoweredCommandKind {
+        match self {
+            Commandline::Args(_) => LoweredCommandKind::Argv,
+            Commandline::Verbatim(_) => LoweredCommandKind::Shell,
         }
     }
 }

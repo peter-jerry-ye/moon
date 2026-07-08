@@ -336,10 +336,12 @@ impl<'a> LoweringContext<'a> {
                     .insert(output_path.clone(), args.clone());
             }
         }
+        let command_kind = cmd.commandline.lowered_command_kind();
         let commandline = cmd.commandline.to_n2_string();
         if let Some(lowered_build) = &mut self.lowered_build {
             lowered_build.push_command(
                 commandline.clone(),
+                command_kind,
                 input_paths.clone(),
                 output_paths.clone(),
             );

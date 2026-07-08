@@ -31,14 +31,24 @@ pub struct LoweredBuild {
 #[derive(Debug, Clone)]
 struct LoweredBuildCommand {
     commandline: String,
+    command_kind: LoweredCommandKind,
     inputs: Vec<PathBuf>,
     outputs: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoweredCommandKind {
+    /// Command produced from an argv vector and rendered for the executor.
+    Argv,
+    /// Command intentionally composed with shell syntax from trusted argv fragments.
+    Shell,
 }
 
 /// A command produced by action-plan lowering.
 #[derive(Debug, Clone, Copy)]
 pub struct LoweredCommand<'a> {
     commandline: &'a str,
+    command_kind: LoweredCommandKind,
     inputs: &'a [PathBuf],
     outputs: &'a [PathBuf],
 }
@@ -46,6 +56,10 @@ pub struct LoweredCommand<'a> {
 impl<'a> LoweredCommand<'a> {
     pub fn commandline(&self) -> &'a str {
         self.commandline
+    }
+
+    pub fn command_kind(&self) -> LoweredCommandKind {
+        self.command_kind
     }
 
     pub fn inputs(&self) -> &'a [PathBuf] {
@@ -61,6 +75,7 @@ impl LoweredBuildCommand {
     fn as_command(&self) -> LoweredCommand<'_> {
         LoweredCommand {
             commandline: &self.commandline,
+            command_kind: self.command_kind,
             inputs: &self.inputs,
             outputs: &self.outputs,
         }
@@ -71,11 +86,13 @@ impl LoweredBuild {
     pub(crate) fn push_command(
         &mut self,
         commandline: String,
+        command_kind: LoweredCommandKind,
         inputs: Vec<PathBuf>,
         outputs: Vec<PathBuf>,
     ) {
         self.commands.push(LoweredBuildCommand {
             commandline,
+            command_kind,
             inputs,
             outputs,
         });
