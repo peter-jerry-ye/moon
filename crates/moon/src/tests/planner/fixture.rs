@@ -368,7 +368,8 @@ impl PlanningFixture {
                     .flat_map(|file| graph.files.lookup(&file.to_string_lossy()))
             })
             .collect::<Vec<_>>();
-        let dump = debug_dump_build_graph(graph, &default_files, &self.source_dir);
+        let dump =
+            debug_dump_build_graph(graph, &default_files, &self.source_dir, &self.target_dir);
         let mut out = Vec::new();
         dump.dump_to(&mut out).expect("graph dump should serialize");
         Ok(String::from_utf8(out).expect("graph dump should be valid UTF-8"))

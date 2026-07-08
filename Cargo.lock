@@ -1665,7 +1665,6 @@ name = "moonbuild-debug"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "dunce",
  "moonutil",
  "n2",
  "serde",

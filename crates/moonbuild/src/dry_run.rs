@@ -21,11 +21,11 @@ use n2::graph::{BuildId, FileId, Graph};
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     sync::LazyLock,
 };
 
-use moonutil::moon_dir::{home, toolchain_root};
+pub use moonutil::dry_run::PathNormalizer;
 
 const ENV_VAR: &str = "MOON_TEST_DUMP_BUILD_GRAPH";
 static DRY_RUN_TEST_OUTPUT: LazyLock<Option<String>> =
@@ -38,8 +38,7 @@ pub fn print_build_commands(
     source_dir: &Path,
     target_dir: &Path,
 ) {
-    let _ = target_dir; // TODO
-    let replacer = PathNormalizer::new(source_dir);
+    let replacer = PathNormalizer::new_with_target_dir(source_dir, target_dir);
 
     if !default.is_empty() {
         let mut sorted_default = default.to_vec();
@@ -54,129 +53,7 @@ pub fn print_build_commands(
         }
     }
 
-    try_debug_dump_build_graph_to_file(graph, default, source_dir);
-}
-
-// FIXME: `PathNormalizer` is production-facing dry-run output formatting, not
-// moonbuild debug support. Move it to a non-debug utility module after
-// `moonbuild-debug` is no longer needed on production dependency paths.
-pub struct PathNormalizer {
-    canonical: Option<PathBuf>,
-    replace_table: Vec<(String, String)>,
-    binary_file_name_table: Vec<(String, String)>,
-    show_toolchain_root: bool,
-    toolchain_root: String,
-    moon_home: String,
-}
-
-impl PathNormalizer {
-    pub fn new(source_dir: &Path) -> Self {
-        let all_moon_bins = moonutil::BINARIES.all_moon_bins();
-        let replace_table = all_moon_bins
-            .iter()
-            .map(|(name, path)| (path.to_string_lossy().into_owned(), name.to_string()))
-            .collect();
-        let binary_file_name_table = all_moon_bins
-            .iter()
-            .filter_map(|(name, path)| {
-                let file_name = path.file_name()?.to_str()?;
-                (file_name != *name).then(|| (file_name.to_owned(), (*name).to_owned()))
-            })
-            .collect();
-        let toolchain_root = toolchain_root();
-        let moon_home = home();
-        let show_toolchain_root = match (
-            dunce::canonicalize(&toolchain_root),
-            dunce::canonicalize(&moon_home),
-        ) {
-            (Ok(toolchain_root), Ok(moon_home)) => toolchain_root != moon_home,
-            _ => toolchain_root != moon_home,
-        };
-
-        let canonical = dunce::canonicalize(source_dir).ok();
-        PathNormalizer {
-            canonical,
-            replace_table,
-            binary_file_name_table,
-            show_toolchain_root,
-            toolchain_root: toolchain_root.to_string_lossy().into_owned(),
-            moon_home: moon_home.to_string_lossy().into_owned(),
-        }
-    }
-
-    pub fn normalize_command(&self, command: &str) -> String {
-        let args = moonutil::shlex::split_native(command);
-        let normalized_args = args
-            .iter()
-            .map(|s| self.normalize_command_arg(s))
-            .collect::<Vec<_>>();
-        moonutil::shlex::join_unix(normalized_args.iter().map(|s| s.as_ref()))
-    }
-
-    pub fn normalize_command_arg(&self, s: &str) -> String {
-        let mut s = s.to_owned();
-        if let Some(canonical) = &self.canonical {
-            let prefix = canonical.to_string_lossy();
-            let prefix_str = prefix.as_ref();
-            let with_sep = format!("{prefix_str}{}", std::path::MAIN_SEPARATOR);
-            s = s.replace(&with_sep, "./");
-            s = s.replace(prefix_str, ".");
-        }
-
-        for (from, to) in &self.replace_table {
-            s = s.replace(from, to);
-        }
-        if self.show_toolchain_root {
-            s = s.replace(&self.toolchain_root, "$MOON_TOOLCHAIN_ROOT");
-        }
-        s = s.replace(&self.moon_home, "$MOON_HOME");
-        s = s.replace('\\', "/");
-        s = self.normalize_binary_file_name(s);
-
-        s
-    }
-
-    pub fn normalize_path(&self, path: &str) -> String {
-        let path_obj = Path::new(path);
-        if let Some(canonical) = &self.canonical
-            && let Ok(stripped) = path_obj.strip_prefix(canonical)
-        {
-            return Self::relative_from_path(stripped);
-        }
-        let mut path = path.to_owned();
-        if self.show_toolchain_root {
-            path = path.replace(&self.toolchain_root, "$MOON_TOOLCHAIN_ROOT");
-        }
-        path = path.replace(&self.moon_home, "$MOON_HOME");
-        path = path.replace('\\', "/");
-        path = self.normalize_binary_file_name(path);
-
-        path
-    }
-
-    fn normalize_binary_file_name(&self, s: String) -> String {
-        self.binary_file_name_table
-            .iter()
-            .find_map(|(from, to)| {
-                if s == *from {
-                    Some(to.clone())
-                } else {
-                    s.strip_suffix(from)
-                        .filter(|prefix| prefix.ends_with('/'))
-                        .map(|prefix| format!("{prefix}{to}"))
-                }
-            })
-            .unwrap_or(s)
-    }
-
-    fn relative_from_path(stripped: &Path) -> String {
-        if stripped.as_os_str().is_empty() {
-            ".".to_owned()
-        } else {
-            let normalized = stripped.to_string_lossy().replace('\\', "/");
-            format!("./{}", normalized)
-        }
-    }
+    try_debug_dump_build_graph_to_file(graph, default, source_dir, target_dir);
 }
 
 #[derive(Debug)]
@@ -206,8 +83,9 @@ fn debug_dump_build_graph(
     graph: &n2::graph::Graph,
     input_files: &[FileId],
     source_dir: &Path,
+    target_dir: &Path,
 ) -> BuildGraphDump {
-    let replacer = PathNormalizer::new(source_dir);
+    let replacer = PathNormalizer::new_with_target_dir(source_dir, target_dir);
 
     let accessible_nodes = dfs_for_accessible_nodes(graph, input_files);
     generate_from_nodes(graph, accessible_nodes, &replacer)
@@ -221,13 +99,14 @@ fn try_debug_dump_build_graph_to_file(
     build_graph: &n2::graph::Graph,
     default_files: &[n2::graph::FileId],
     source_dir: &Path,
+    target_dir: &Path,
 ) {
     let Some(out_file) = DRY_RUN_TEST_OUTPUT.as_deref() else {
         return;
     };
 
     let file = std::fs::File::create(out_file).expect("Failed to create dry-run dump target");
-    let dump = debug_dump_build_graph(build_graph, default_files, source_dir);
+    let dump = debug_dump_build_graph(build_graph, default_files, source_dir, target_dir);
     dump.dump_to(file).expect("Failed to dump to target output");
 }
 
@@ -372,73 +251,4 @@ fn stable_toposort_graph(graph: &Graph, inputs: &[FileId]) -> Vec<BuildId> {
     }
 
     res
-}
-
-#[cfg(test)]
-mod tests {
-    use super::PathNormalizer;
-
-    #[test]
-    fn normalizes_known_tool_exe_suffix_without_touching_native_outputs() {
-        let replacer = PathNormalizer {
-            canonical: None,
-            replace_table: vec![],
-            binary_file_name_table: vec![("moonc.exe".to_owned(), "moonc".to_owned())],
-            show_toolchain_root: true,
-            toolchain_root: "$MOON_TOOLCHAIN_ROOT".to_owned(),
-            moon_home: "$MOON_HOME".to_owned(),
-        };
-
-        assert_eq!(replacer.normalize_command_arg("moonc.exe"), "moonc");
-        assert_eq!(
-            replacer.normalize_command_arg("$MOON_HOME/bin/moonc.exe"),
-            "$MOON_HOME/bin/moonc"
-        );
-        assert_eq!(
-            replacer.normalize_path("./_build/native/debug/build/main/main.exe"),
-            "./_build/native/debug/build/main/main.exe"
-        );
-    }
-
-    #[test]
-    fn keeps_moon_home_when_roots_match() {
-        let replacer = PathNormalizer {
-            canonical: None,
-            replace_table: vec![],
-            binary_file_name_table: vec![],
-            show_toolchain_root: false,
-            toolchain_root: "/tmp/.moon".to_owned(),
-            moon_home: "/tmp/.moon".to_owned(),
-        };
-
-        assert_eq!(
-            replacer.normalize_command_arg("/tmp/.moon/lib/core/prelude"),
-            "$MOON_HOME/lib/core/prelude"
-        );
-        assert_eq!(
-            replacer.normalize_path("/tmp/.moon/bin/moonc"),
-            "$MOON_HOME/bin/moonc"
-        );
-    }
-
-    #[test]
-    fn keeps_toolchain_root_distinct_when_needed() {
-        let replacer = PathNormalizer {
-            canonical: None,
-            replace_table: vec![],
-            binary_file_name_table: vec![],
-            show_toolchain_root: true,
-            toolchain_root: "/tmp/toolchain".to_owned(),
-            moon_home: "/tmp/home".to_owned(),
-        };
-
-        assert_eq!(
-            replacer.normalize_command_arg("/tmp/toolchain/lib/core/prelude"),
-            "$MOON_TOOLCHAIN_ROOT/lib/core/prelude"
-        );
-        assert_eq!(
-            replacer.normalize_path("/tmp/toolchain/bin/moonc"),
-            "$MOON_TOOLCHAIN_ROOT/bin/moonc"
-        );
-    }
 }
