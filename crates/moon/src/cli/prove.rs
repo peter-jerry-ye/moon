@@ -192,12 +192,7 @@ pub(crate) fn run_prove(cli: &UniversalFlags, cmd: &ProveSubcommand) -> anyhow::
     let proof_reports = planned_proof_reports(&build_meta);
 
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            &project_root,
-            &target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, &project_root, &target_dir);
         return Ok(0);
     }
 

@@ -757,16 +757,16 @@ fn build_executable_from_plan(
     options: BuildExecutableFromPlanOptions,
 ) -> Result<RunExecutable, anyhow::Error> {
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            source_dir,
-            target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, source_dir, target_dir);
 
         if options.print_dry_run_run_command {
             let run_cmd = get_run_cmd(build_meta, &cmd.args, cmd.moonrun_policy.as_deref());
-            rr_build::dry_print_command(run_cmd.as_std(), source_dir, false);
+            rr_build::dry_print_command_with_target_dir(
+                run_cmd.as_std(),
+                source_dir,
+                Some(target_dir),
+                false,
+            );
         }
         return Ok(RunExecutable {
             executable: get_run_executable(build_meta).to_path_buf(),
@@ -835,7 +835,12 @@ fn run_executable(
     );
     run_cmd.args(&cmd.args);
     if cli.verbose {
-        rr_build::dry_print_command(run_cmd.as_std(), &executable.source_dir, true);
+        rr_build::dry_print_command_with_target_dir(
+            run_cmd.as_std(),
+            &executable.source_dir,
+            Some(&executable.target_dir),
+            true,
+        );
     }
 
     // Release the lock before spawning the subprocess

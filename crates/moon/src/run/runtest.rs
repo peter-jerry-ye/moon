@@ -769,7 +769,12 @@ fn run_one_test_executable(
     let mut cov_cap = mk_coverage_capture();
     let mut test_cap = make_test_capture();
     if ctx.verbose {
-        crate::rr_build::dry_print_command(cmd.as_std(), ctx.source_dir, true);
+        crate::rr_build::dry_print_command_with_target_dir(
+            cmd.as_std(),
+            ctx.source_dir,
+            Some(ctx.target_dir),
+            true,
+        );
     }
     info!(package = %test.args.package, executable = %test.executable.display(), "launching test executable");
 

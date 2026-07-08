@@ -1734,12 +1734,7 @@ fn execute_test_build_from_plan(
     user_diagnostics: UserDiagnostics,
 ) -> Result<TestBuildExecution, anyhow::Error> {
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            source_dir,
-            target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, source_dir, target_dir);
         // Test command lines depend on generated metadata, which dry-run does
         // not materialize. Profile dry-run therefore stops at the build graph.
         return Ok(TestBuildExecution::DryRun);

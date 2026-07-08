@@ -29,6 +29,7 @@ pub mod constants;
 pub mod demangle;
 pub mod dependency;
 pub mod dirs;
+pub mod dry_run;
 pub mod error_code_docs;
 pub mod features;
 pub mod front_matter;

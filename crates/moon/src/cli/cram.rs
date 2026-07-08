@@ -153,15 +153,16 @@ fn run_cram_test(cli: &UniversalFlags, cmd: CramTestSubcommand) -> anyhow::Resul
 
     let executable_dirs = collect_executable_dirs(&planned_runs, &source_dir);
     if cli.dry_run {
-        for (build_meta, build_graph) in &planned_runs {
-            rr_build::print_dry_run(
-                build_graph,
-                build_meta.artifacts.values(),
-                &source_dir,
-                &target_dir,
-            );
+        for (_, build_graph) in &planned_runs {
+            rr_build::print_dry_run(build_graph, &source_dir, &target_dir);
         }
-        print_dry_run_cram_command(&moon_cram, &parsed.cram_args, &executable_dirs, &source_dir);
+        print_dry_run_cram_command(
+            &moon_cram,
+            &parsed.cram_args,
+            &executable_dirs,
+            &source_dir,
+            &target_dir,
+        );
         return Ok(0);
     }
 
@@ -350,8 +351,9 @@ fn print_dry_run_cram_command(
     cram_args: &[String],
     executable_dirs: &[PathBuf],
     source_dir: &Path,
+    target_dir: &Path,
 ) {
-    let replacer = moonbuild::dry_run::PathNormalizer::new(source_dir);
+    let replacer = moonbuild::dry_run::PathNormalizer::new_with_target_dir(source_dir, target_dir);
     let mut args = vec![
         format!(
             "PATH={}",

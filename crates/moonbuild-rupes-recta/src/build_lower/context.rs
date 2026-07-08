@@ -36,13 +36,15 @@ use crate::{
 use moonutil::toolchain::BINARIES;
 
 use super::{
-    BuildOptions, CommandArgMap, Commandline, LoweringError,
+    BuildCommand, BuildOptions, CommandArgMap, Commandline, LoweredBuild, LoweringError,
     utils::{build_ins, build_n2_fileloc, build_outs},
 };
 
 pub(crate) struct LoweringContext<'a> {
     // What we're building
     pub(crate) graph: N2Graph,
+
+    pub(crate) lowered_build: Option<LoweredBuild>,
 
     pub(crate) command_args_by_output: CommandArgMap,
 
@@ -203,6 +205,7 @@ impl<'a> LoweringContext<'a> {
     ) -> Self {
         Self {
             graph: N2Graph::default(),
+            lowered_build: opt.capture_lowered_build.then(LoweredBuild::default),
             command_args_by_output: CommandArgMap::new(),
             artifact_paths,
             rel: &resolve_output.pkg_rel,
@@ -301,22 +304,30 @@ impl<'a> LoweringContext<'a> {
             }
         };
 
+        self.emit_build_action(id, action_products, cmd)
+    }
+
+    fn emit_build_action(
+        &mut self,
+        id: BuildActionId,
+        action_products: ActionProducts,
+        cmd: BuildCommand,
+    ) -> Result<(), LoweringError> {
         // Collect n2 inputs and outputs.
         //
         // MAINTAINERS: some of the inputs and outputs might be calculated
         // twice, once for the commandline and another here. This is currently
         // not a performance concern, but if you have found a way to optimize
         // this, or if you are duplicating a lot of code for it, please refactor.
-        let mut ins = action_products.dependency_paths();
-        ins.extend(cmd.extra_inputs);
+        let mut input_paths = action_products.dependency_paths();
+        input_paths.extend(cmd.extra_inputs);
         // Track tool binary dependencies so that n2 detects when compilers
         // or other toolchain binaries change (e.g. after a toolchain update)
         // and triggers a rebuild.
         if self.plan.needs_moonc_tool_dep(id) {
-            ins.push(BINARIES.moonc.clone());
+            input_paths.push(BINARIES.moonc.clone());
         }
-        ins.sort(); // make sure the order is deterministic
-        let ins = build_ins(&mut self.graph, ins);
+        input_paths.sort(); // make sure the order is deterministic
 
         let output_paths = action_products.output_paths();
         if let Commandline::Args(args) = &cmd.commandline {
@@ -325,6 +336,15 @@ impl<'a> LoweringContext<'a> {
                     .insert(output_path.clone(), args.clone());
             }
         }
+        let commandline = cmd.commandline.to_n2_string();
+        if let Some(lowered_build) = &mut self.lowered_build {
+            lowered_build.push_command(
+                commandline.clone(),
+                input_paths.clone(),
+                output_paths.clone(),
+            );
+        }
+        let ins = build_ins(&mut self.graph, input_paths);
         let outs = build_outs(&mut self.graph, output_paths);
 
         // Construct n2 build node
@@ -337,7 +357,7 @@ impl<'a> LoweringContext<'a> {
             ins,
             outs,
         );
-        build.cmdline = Some(cmd.commandline.to_n2_string());
+        build.cmdline = Some(commandline);
         build.desc = Some(self.plan.human_desc(id, self.modules, self.packages));
         // n2 can't capture and replay command outputs. this is a workaround to
         // avoid losing warnings from `moonc`. According to legacy code, this

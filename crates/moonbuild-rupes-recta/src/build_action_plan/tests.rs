@@ -152,6 +152,26 @@ fn check_interface_dependency_uses_selected_check_action() {
 }
 
 #[test]
+fn action_ids_are_dependency_first() {
+    let consumer = package_id(1).build_target(TargetKind::Source);
+    let dependency = package_id(2).build_target(TargetKind::Source);
+    let consumer_node = BuildPlanNode::BuildCore(consumer);
+    let dependency_node = BuildPlanNode::BuildCore(dependency);
+    let mut plan = BuildPlan::default();
+    plan.test_add_edge(
+        consumer_node,
+        dependency_node,
+        FileDependencyKind::Artifacts(PlanArtifactNeed::Interface),
+    );
+
+    let action_plan = plan.build_action_plan();
+    let consumer_id = action_plan.id_for_node(consumer_node);
+    let dependency_id = action_plan.id_for_node(dependency_node);
+
+    assert!(dependency_id.0 < consumer_id.0);
+}
+
+#[test]
 fn build_core_dependency_can_track_interface_and_core_ir() {
     let dependency = package_id(1).build_target(TargetKind::Source);
     let consumer = package_id(2).build_target(TargetKind::Source);

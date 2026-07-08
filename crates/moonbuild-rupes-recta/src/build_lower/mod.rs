@@ -40,8 +40,10 @@ mod compiler;
 mod context;
 mod lower_aux;
 mod lower_build;
+mod lowered_build;
 mod utils;
 
+pub use lowered_build::{LoweredBuild, LoweredCommand};
 pub use utils::{build_ins, build_n2_fileloc, build_outs};
 
 pub(crate) use backend::{CExecutableRealization, CStubLibraryRealization, SelectedBackend};
@@ -108,6 +110,8 @@ pub struct BuildOptions {
     pub warning_condition: WarningCondition,
     pub info_no_alias: bool,
     pub wasi_link: bool,
+    /// Whether to retain action-level commands for dry-run consumers.
+    pub capture_lowered_build: bool,
 
     // Environments
     /// Only `Some` if we import standard library.
@@ -208,6 +212,12 @@ pub type CommandArgMap = BTreeMap<PathBuf, Vec<String>>;
 pub struct LoweringResult {
     /// The lowered n2 build graph.
     pub build_graph: N2Graph,
+
+    /// Action-level commands produced while lowering, when requested.
+    ///
+    /// This is the typed dry-run surface. Consumers should use this instead of
+    /// reconstructing command dependencies from the n2 graph.
+    pub lowered_build: Option<LoweredBuild>,
 
     /// Structured argv for lowered commands that are represented as argument
     /// vectors before they are rendered into n2 command strings.
@@ -320,6 +330,7 @@ pub fn lower_build_plan(
     info!("Action plan lowering completed successfully");
     Ok(LoweringResult {
         build_graph: ctx.graph,
+        lowered_build: ctx.lowered_build,
         command_args_by_output: ctx.command_args_by_output,
         artifacts: out_artifacts,
     })
@@ -389,6 +400,7 @@ mod tests {
                 warning_condition: WarningCondition::Default,
                 info_no_alias: false,
                 wasi_link: false,
+                capture_lowered_build: false,
                 stdlib_path: None,
                 lowering_environment: LoweringEnvironment::default(),
             };
@@ -637,6 +649,7 @@ mod tests {
             warning_condition: WarningCondition::Default,
             info_no_alias: false,
             wasi_link: false,
+            capture_lowered_build: false,
             stdlib_path: None,
             lowering_environment,
         };
@@ -644,6 +657,8 @@ mod tests {
         let action_plan = plan.build_action_plan();
         let lowered = lower_build_plan(&resolve_output, &action_plan, &options)
             .expect("lowering should succeed");
+        assert!(lowered.lowered_build.is_none());
+
         let exe_path = artifact_paths.target_layout().executable_of_build_target(
             &resolve_output.pkg_dirs,
             &target,

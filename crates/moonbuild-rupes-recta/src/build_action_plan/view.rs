@@ -16,7 +16,7 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use moonutil::mooncakes::result::ResolvedEnv;
 
@@ -31,6 +31,7 @@ use super::{BuildAction, BuildActionId, BuildProduct};
 /// Normalized action-level view consumed by backend lowering.
 pub struct BuildActionPlan<'a> {
     plan: &'a BuildPlan,
+    /// Semantic actions in dependency-first order.
     action_nodes: Vec<BuildPlanNode>,
     action_ids_by_node: HashMap<BuildPlanNode, BuildActionId>,
     input_actions: Vec<BuildActionId>,
@@ -38,7 +39,7 @@ pub struct BuildActionPlan<'a> {
 
 impl BuildPlan {
     pub fn build_action_plan(&self) -> BuildActionPlan<'_> {
-        let action_nodes = self.all_nodes().collect::<Vec<_>>();
+        let action_nodes = self.dependency_first_nodes();
         let action_ids_by_node = action_nodes
             .iter()
             .copied()
@@ -60,6 +61,41 @@ impl BuildPlan {
             action_ids_by_node,
             input_actions,
         }
+    }
+
+    fn dependency_first_nodes(&self) -> Vec<BuildPlanNode> {
+        fn visit(
+            plan: &BuildPlan,
+            node: BuildPlanNode,
+            visited: &mut HashSet<BuildPlanNode>,
+            out: &mut Vec<BuildPlanNode>,
+        ) {
+            if !visited.insert(node) {
+                return;
+            }
+
+            let mut dependencies = plan.dependency_nodes(node).collect::<Vec<_>>();
+            dependencies.sort();
+            for dependency in dependencies {
+                visit(plan, dependency, visited, out);
+            }
+            out.push(node);
+        }
+
+        let mut visited = HashSet::new();
+        let mut nodes = Vec::with_capacity(self.node_count());
+
+        for &node in self.input_nodes() {
+            visit(self, node, &mut visited, &mut nodes);
+        }
+
+        let mut remaining_nodes = self.all_nodes().collect::<Vec<_>>();
+        remaining_nodes.sort();
+        for node in remaining_nodes {
+            visit(self, node, &mut visited, &mut nodes);
+        }
+
+        nodes
     }
 }
 

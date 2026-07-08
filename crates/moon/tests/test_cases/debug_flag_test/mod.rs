@@ -1,7 +1,7 @@
 #[cfg(unix)]
 use expect_test::expect;
 
-use crate::{TestDir, dry_run_utils::line_with, get_stdout};
+use crate::{TestDir, dry_run_utils::line_with, get_stdout, moon_cmd};
 
 #[cfg(unix)]
 use crate::{get_err_stderr, util::check};
@@ -15,6 +15,39 @@ fn run_dry_run_uses_selected_profile_for_runtime_artifact() {
 
     let release_run = get_stdout(&dir, ["run", "main", "--dry-run", "--release", "--nostd"]);
     assert_moonrun_line(&release_run, true);
+}
+
+#[test]
+fn run_dry_run_masks_external_target_dir() {
+    let dir = TestDir::new("debug_flag_test");
+    let target_dir = tempfile::Builder::new()
+        .prefix("moon-dry-run-target-")
+        .tempdir()
+        .expect("external target dir should create");
+    let target_dir_text = dunce::canonicalize(target_dir.path())
+        .expect("external target dir should canonicalize")
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let output = moon_cmd(&dir)
+        .arg("--target-dir")
+        .arg(target_dir.path())
+        .args(["run", "main", "--dry-run", "--nostd"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(output).expect("dry-run output should be valid UTF-8");
+
+    assert!(
+        stdout.contains("$MOON_TARGET_DIR"),
+        "expected dry-run output to mask external target dir:\n{stdout}"
+    );
+    assert!(
+        !stdout.replace('\\', "/").contains(&target_dir_text),
+        "dry-run output should not expose external target dir:\n{stdout}"
+    );
 }
 
 #[cfg(unix)]
