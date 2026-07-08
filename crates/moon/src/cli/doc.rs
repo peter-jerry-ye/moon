@@ -150,12 +150,7 @@ pub(crate) fn run_doc_rr(cli: UniversalFlags, cmd: DocSubcommand) -> anyhow::Res
 
     // Early exit for dry-run
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            &source_dir,
-            &target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, &source_dir, &target_dir);
         return Ok(0);
     }
 

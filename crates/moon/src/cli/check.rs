@@ -339,12 +339,7 @@ fn run_check_for_single_file_rr(
     .context("Failed to calculate build plan")?;
 
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            source_dir,
-            target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, source_dir, target_dir);
         return Ok(0);
     }
 
@@ -491,13 +486,8 @@ fn run_check_normal_internal_rr(
     .context("Failed to calculate build plan")?;
 
     let ok = if cli.dry_run {
-        for (build_meta, build_graph) in planned_runs {
-            rr_build::print_dry_run(
-                &build_graph,
-                build_meta.artifacts.values(),
-                source_dir,
-                target_dir,
-            );
+        for (_, build_graph) in planned_runs {
+            rr_build::print_dry_run(&build_graph, source_dir, target_dir);
         }
         true
     } else {

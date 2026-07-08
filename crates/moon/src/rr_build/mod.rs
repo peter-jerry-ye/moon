@@ -39,7 +39,7 @@ use indexmap::IndexMap;
 use moonbuild::entry::{N2RunStats, ResultCatcher, create_progress_console};
 use moonbuild_rupes_recta::{
     CompileConfig, ResolveConfig, ResolveOutput,
-    build_lower::{LoweringEnvironment, WarningCondition},
+    build_lower::{LoweredBuild, LoweringEnvironment, WarningCondition},
     build_plan::InputDirective,
     fmt::{FmtConfig, FmtResolveOutput},
     intent::UserIntent,
@@ -71,7 +71,9 @@ use crate::build_flags::{BuildFlags, OutputStyle};
 use crate::user_diagnostics::UserDiagnostics;
 
 mod dry_run;
-pub use dry_run::{dry_print_command, print_dry_run, print_dry_run_all};
+pub use dry_run::{
+    dry_print_command, dry_print_command_with_target_dir, print_dry_run, print_dry_run_all,
+};
 
 /// The output of a calculate user intent operation.
 pub struct CalcUserIntentOutput {
@@ -298,6 +300,8 @@ pub struct CompilePreConfig {
     pub info_no_alias: bool,
     /// Attempt to use `tcc -run` when possible
     pub try_tcc_run: bool,
+    /// Retain the lowered command surface for dry-run printing.
+    capture_lowered_build: bool,
     warn_list: Option<String>,
 }
 
@@ -397,7 +401,7 @@ impl CompilePreConfig {
             warning_condition: self.warning_condition,
             warn_list: self.warn_list,
             info_no_alias: self.info_no_alias,
-            capture_lowered_build: false,
+            capture_lowered_build: self.capture_lowered_build,
         })
     }
 
@@ -476,6 +480,7 @@ pub fn preconfig_compile(
         docs_serve: false,
         info_no_alias: false,
         try_tcc_run: false,
+        capture_lowered_build: cli.dry_run,
         warning_condition: if build_flags.deny_warn {
             WarningCondition::Deny
         } else {
@@ -662,6 +667,7 @@ pub(crate) fn plan_resolved_build_from_intent(
         .n2_db_path(cx.target_backend.into());
     let input = BuildInput {
         graph: compile_output.build_graph,
+        dry_run_plan: compile_output.lowered_build.map(DryRunPlan::Build),
         command_args_by_output: compile_output.command_args_by_output,
         db_path,
     };
@@ -693,6 +699,7 @@ pub fn plan_fmt(
     let db_path = layout.n2_db_path(TargetBackend::default());
     let input = BuildInput {
         graph,
+        dry_run_plan: None,
         command_args_by_output: Default::default(),
         db_path,
     };
@@ -927,11 +934,20 @@ impl Default for BuildConfig {
     }
 }
 
+/// Semantic command source used by dry-run printing.
+#[derive(Debug, Clone)]
+enum DryRunPlan {
+    Build(LoweredBuild),
+}
+
 /// The input to a build execution.
 #[derive(Debug, Clone)]
 pub struct BuildInput {
     /// The build graph to execute
     graph: n2::graph::Graph,
+
+    /// Semantic command source for dry-run output, retained only when needed.
+    dry_run_plan: Option<DryRunPlan>,
 
     /// Structured command argv keyed by generated output path.
     command_args_by_output: moonbuild_rupes_recta::build_lower::CommandArgMap,

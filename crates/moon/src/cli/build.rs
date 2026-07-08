@@ -202,13 +202,8 @@ fn run_build_rr(
     )?;
 
     let ok = if cli.dry_run {
-        for (build_meta, build_graph) in planned_runs {
-            rr_build::print_dry_run(
-                &build_graph,
-                build_meta.artifacts.values(),
-                source_dir,
-                target_dir,
-            );
+        for (_, build_graph) in planned_runs {
+            rr_build::print_dry_run(&build_graph, source_dir, target_dir);
         }
         true
     } else {

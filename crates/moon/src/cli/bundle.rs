@@ -139,12 +139,7 @@ pub(crate) fn run_bundle_internal_rr(
     )?;
 
     if cli.dry_run {
-        rr_build::print_dry_run(
-            &build_graph,
-            build_meta.artifacts.values(),
-            source_dir,
-            target_dir,
-        );
+        rr_build::print_dry_run(&build_graph, source_dir, target_dir);
         Ok(0)
     } else {
         let _lock = FileLock::lock(target_dir)?;

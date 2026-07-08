@@ -20,38 +20,85 @@
 
 use std::{path::Path, process::Command};
 
-use moonbuild_rupes_recta::model::Artifacts;
+use moonbuild::dry_run::{DryRunCommand, DryRunCommandKind, PathNormalizer};
+use moonbuild_rupes_recta::build_lower::LoweredCommandKind;
 
-use crate::rr_build::BuildInput;
+use crate::rr_build::{BuildInput, DryRunPlan};
 
 /// Print what would be executed in a dry-run.
 ///
-/// This is a helper function that prints the build commands from a build graph.
-pub fn print_dry_run<'a>(
-    input: &BuildInput,
-    artifacts: impl IntoIterator<Item = &'a Artifacts>,
-    source_dir: &Path,
-    target_dir: &Path,
-) {
-    let graph = &input.graph;
-    let default_files = artifacts
-        .into_iter()
-        .flat_map(|art| {
-            art.artifacts
-                .iter()
-                .flat_map(|file| graph.files.lookup(&file.to_string_lossy()))
-        })
-        .collect::<Vec<_>>();
-
-    moonbuild::dry_run::print_build_commands(graph, &default_files, source_dir, target_dir);
+/// RR builds use lowered action steps directly.
+pub fn print_dry_run(input: &BuildInput, source_dir: &Path, target_dir: &Path) {
+    match &input.dry_run_plan {
+        Some(DryRunPlan::Build(lowered_build)) => {
+            let commands = lowered_build.commands();
+            print_commands(
+                commands
+                    .iter()
+                    .map(|command| DryRunCommand {
+                        command: Some(command.commandline()),
+                        command_kind: dry_run_command_kind(command.command_kind()),
+                        inputs: command.inputs(),
+                        outputs: command.outputs(),
+                    })
+                    .collect(),
+                source_dir,
+                target_dir,
+            );
+        }
+        None => {
+            panic!("build dry-run plan should be available");
+        }
+    }
 }
 
 /// Print all commands in a dry-run.
-///
-/// Similar to [`print_dry_run`], but assumes *all* files in the build graph are to be built.
 pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Path) {
-    let default_files = input.graph.get_start_nodes();
-    moonbuild::dry_run::print_build_commands(&input.graph, &default_files, source_dir, target_dir);
+    match &input.dry_run_plan {
+        Some(DryRunPlan::Build(lowered_build)) => {
+            let commands = lowered_build.commands();
+            print_commands(
+                commands
+                    .iter()
+                    .map(|command| DryRunCommand {
+                        command: Some(command.commandline()),
+                        command_kind: dry_run_command_kind(command.command_kind()),
+                        inputs: command.inputs(),
+                        outputs: command.outputs(),
+                    })
+                    .collect(),
+                source_dir,
+                target_dir,
+            );
+        }
+        None => {
+            let default_files = input.graph.get_start_nodes();
+            moonbuild::dry_run::print_build_commands(
+                &input.graph,
+                &default_files,
+                source_dir,
+                target_dir,
+            );
+        }
+    }
+}
+
+fn print_commands<'a>(commands: Vec<DryRunCommand<'a>>, source_dir: &Path, target_dir: &Path) {
+    let replacer = PathNormalizer::new_with_target_dir(source_dir, target_dir);
+    for command in &commands {
+        if let Some(commandline) = command.normalized_command(&replacer) {
+            println!("{}", commandline);
+        }
+    }
+
+    moonbuild::dry_run::try_debug_dump_commands_to_file(commands, source_dir, target_dir);
+}
+
+fn dry_run_command_kind(kind: LoweredCommandKind) -> DryRunCommandKind {
+    match kind {
+        LoweredCommandKind::Argv => DryRunCommandKind::Argv,
+        LoweredCommandKind::Shell => DryRunCommandKind::Shell,
+    }
 }
 
 /// Print a command as it would be executed, with the proper escaping.
@@ -60,7 +107,20 @@ pub fn print_dry_run_all(input: &BuildInput, source_dir: &Path, target_dir: &Pat
 ///
 /// If `stderr` is true, the command is assumed to write to stderr instead of stdout.
 pub fn dry_print_command(cmd: &Command, source_dir: &Path, stderr: bool) {
-    let replacer = moonbuild::dry_run::PathNormalizer::new(source_dir);
+    dry_print_command_with_target_dir(cmd, source_dir, None, stderr);
+}
+
+/// Print a command as it would be executed, normalizing both source and target roots.
+pub fn dry_print_command_with_target_dir(
+    cmd: &Command,
+    source_dir: &Path,
+    target_dir: Option<&Path>,
+    stderr: bool,
+) {
+    let replacer = match target_dir {
+        Some(target_dir) => PathNormalizer::new_with_target_dir(source_dir, target_dir),
+        None => PathNormalizer::new(source_dir),
+    };
 
     let args = std::iter::once(cmd.get_program())
         .chain(cmd.get_args())
