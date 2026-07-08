@@ -76,12 +76,17 @@ pub struct CompileConfig {
     pub warn_list: Option<String>,
     /// Whether to not emit alias when running `mooninfo`
     pub info_no_alias: bool,
+    /// Whether to retain action-level commands for dry-run consumers.
+    pub capture_lowered_build: bool,
 }
 
 /// The output information of the compilation.
 pub struct CompileOutput {
     /// The n2 compile graph to be executed
     pub build_graph: n2::graph::Graph,
+
+    /// Action-level commands produced while lowering, when requested.
+    pub lowered_build: Option<build_lower::LoweredBuild>,
 
     /// Structured argv for lowered commands keyed by their generated output paths.
     pub command_args_by_output: build_lower::CommandArgMap,
@@ -161,11 +166,12 @@ pub fn compile(
         warning_condition: cx.warning_condition,
         info_no_alias: cx.info_no_alias,
         wasi_link: cx.wasi_link,
+        capture_lowered_build: cx.capture_lowered_build,
 
         stdlib_path: cx.stdlib_path.clone(),
         lowering_environment: cx.lowering_environment.clone(),
     };
-    let (build_graph, command_args_by_output, artifacts) = {
+    let (build_graph, lowered_build, command_args_by_output, artifacts) = {
         let action_plan = plan.build_action_plan();
         let res = build_lower::lower_build_plan(resolve_output, &action_plan, &lower_env)?;
         let artifacts = res
@@ -176,7 +182,12 @@ pub fn compile(
                 (node, Artifacts { node, artifacts })
             })
             .collect();
-        (res.build_graph, res.command_args_by_output, artifacts)
+        (
+            res.build_graph,
+            res.lowered_build,
+            res.command_args_by_output,
+            artifacts,
+        )
     };
 
     info!("Build graph lowering completed successfully");
@@ -184,6 +195,7 @@ pub fn compile(
 
     Ok(CompileOutput {
         build_graph,
+        lowered_build,
         command_args_by_output,
         artifacts,
         user_warnings,

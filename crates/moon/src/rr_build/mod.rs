@@ -397,6 +397,7 @@ impl CompilePreConfig {
             warning_condition: self.warning_condition,
             warn_list: self.warn_list,
             info_no_alias: self.info_no_alias,
+            capture_lowered_build: false,
         })
     }
 

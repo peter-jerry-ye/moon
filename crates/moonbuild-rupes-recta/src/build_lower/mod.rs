@@ -40,8 +40,10 @@ mod compiler;
 mod context;
 mod lower_aux;
 mod lower_build;
+mod lowered_build;
 mod utils;
 
+pub use lowered_build::{LoweredBuild, LoweredCommand, LoweredCommandKind};
 pub use utils::{build_ins, build_n2_fileloc, build_outs};
 
 pub(crate) use backend::{CExecutableRealization, CStubLibraryRealization, SelectedBackend};
@@ -108,6 +110,8 @@ pub struct BuildOptions {
     pub warning_condition: WarningCondition,
     pub info_no_alias: bool,
     pub wasi_link: bool,
+    /// Whether to retain action-level commands for dry-run consumers.
+    pub capture_lowered_build: bool,
 
     // Environments
     /// Only `Some` if we import standard library.
@@ -209,6 +213,12 @@ pub struct LoweringResult {
     /// The lowered n2 build graph.
     pub build_graph: N2Graph,
 
+    /// Action-level commands produced while lowering, when requested.
+    ///
+    /// This is the typed dry-run surface. Consumers should use this instead of
+    /// reconstructing command dependencies from the n2 graph.
+    pub lowered_build: Option<LoweredBuild>,
+
     /// Structured argv for lowered commands that are represented as argument
     /// vectors before they are rendered into n2 command strings.
     pub command_args_by_output: CommandArgMap,
@@ -232,10 +242,10 @@ pub struct LoweringResult {
 /// For most build commands, this is not an issue. All executables and argument
 /// paths are absolute paths, and there's no shell features involved.
 ///
-/// However, for prebuild commands, the commandline is expected to be copied
-/// verbatim (with minimal resolving) to the generated build script. Thus,
-/// splitting, resolving and quoting again may lead to e.g. shell features being
-/// lost.
+/// However, follow-up tool invocations such as `dsymutil` rely on shell
+/// composition to run only after the preceding command succeeds. Splitting,
+/// resolving, and quoting those command strings as argv would turn shell
+/// control operators into plain arguments.
 ///
 /// Thus, we're currently providing a `Verbatim` variant to handle such cases.
 ///
@@ -258,7 +268,7 @@ enum Commandline {
     /// Use with caution.
     ///
     /// This variant is used for commands that intentionally rely on shell
-    /// composition, such as prebuild commands and follow-up tool invocations.
+    /// composition, such as follow-up tool invocations.
     Verbatim(String),
 }
 
@@ -276,6 +286,13 @@ impl Commandline {
                 moonutil::shlex::join_native(args.iter().map(|x| x.as_str()))
             }
             Commandline::Verbatim(s) => s.clone(),
+        }
+    }
+
+    fn lowered_command_kind(&self) -> LoweredCommandKind {
+        match self {
+            Commandline::Args(_) => LoweredCommandKind::Argv,
+            Commandline::Verbatim(_) => LoweredCommandKind::Shell,
         }
     }
 }
@@ -320,6 +337,7 @@ pub fn lower_build_plan(
     info!("Action plan lowering completed successfully");
     Ok(LoweringResult {
         build_graph: ctx.graph,
+        lowered_build: ctx.lowered_build,
         command_args_by_output: ctx.command_args_by_output,
         artifacts: out_artifacts,
     })
@@ -389,6 +407,7 @@ mod tests {
                 warning_condition: WarningCondition::Default,
                 info_no_alias: false,
                 wasi_link: false,
+                capture_lowered_build: false,
                 stdlib_path: None,
                 lowering_environment: LoweringEnvironment::default(),
             };
@@ -637,6 +656,7 @@ mod tests {
             warning_condition: WarningCondition::Default,
             info_no_alias: false,
             wasi_link: false,
+            capture_lowered_build: false,
             stdlib_path: None,
             lowering_environment,
         };
@@ -644,6 +664,8 @@ mod tests {
         let action_plan = plan.build_action_plan();
         let lowered = lower_build_plan(&resolve_output, &action_plan, &options)
             .expect("lowering should succeed");
+        assert!(lowered.lowered_build.is_none());
+
         let exe_path = artifact_paths.target_layout().executable_of_build_target(
             &resolve_output.pkg_dirs,
             &target,
