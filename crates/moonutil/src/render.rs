@@ -16,7 +16,10 @@
 //
 // For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-use std::path::{Path, PathBuf};
+use std::{
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
 
 use ariadne::{Fmt, ReportKind};
 use clap::ValueEnum;
@@ -200,18 +203,20 @@ impl MooncDiagnostic {
     // TODO: swap names for `render` and `render_diagnostics`
     pub fn render_diagnostics(
         &self,
+        writer: &mut dyn Write,
         use_fancy: bool,
         check_patch_file: Option<&PathBuf>,
         explain: bool,
         render_no_loc_level: DiagnosticLevel,
-    ) -> Option<ReportKind<'static>> {
+    ) -> io::Result<Option<ReportKind<'static>>> {
         let diagnostic = self;
-        let bail_print_original = || {
-            eprintln!(
+        let write_original = |writer: &mut dyn Write| {
+            writeln!(
+                writer,
                 "{}",
                 serde_json_lenient::to_string(diagnostic).unwrap_or_default()
-            );
-            None
+            )?;
+            Ok(None)
         };
         let (kind, color) = diagnostic.get_level_and_color();
 
@@ -221,7 +226,8 @@ impl MooncDiagnostic {
             if DiagnosticLevel::from_str(&diagnostic.level, true)
                 .is_ok_and(|l| l >= render_no_loc_level)
             {
-                eprintln!(
+                writeln!(
+                    writer,
                     "{}",
                     format!(
                         "{}: [{}] {}",
@@ -230,9 +236,9 @@ impl MooncDiagnostic {
                         diagnostic.message
                     )
                     .fg(color)
-                );
+                )?;
             }
-            return Some(kind);
+            return Ok(Some(kind));
         }
 
         let source_file_path = diagnostic.path.clone();
@@ -249,14 +255,15 @@ impl MooncDiagnostic {
                     }) {
                         Some((content, filename)) => (content, filename),
                         None => {
-                            eprintln!(
+                            writeln!(
+                                writer,
                                 "failed to read file `{}`, [{}] {}: {}",
                                 source_file_path,
                                 diagnostic.formatted_error_code(),
                                 diagnostic.level,
                                 diagnostic.message
-                            );
-                            return Some(kind);
+                            )?;
+                            return Ok(Some(kind));
                         }
                     }
                 }
@@ -265,13 +272,11 @@ impl MooncDiagnostic {
         let (start_position, end_position) = diagnostic.loc.as_range();
         let Some(start_offset) = start_position.calculate_offset(&source_file_content) else {
             error!("failed to calculate start offset for diagnostic");
-            bail_print_original()?;
-            return None;
+            return write_original(writer);
         };
         let Some(end_offset) = end_position.calculate_offset(&source_file_content) else {
             error!("failed to calculate end offset for diagnostic");
-            bail_print_original()?;
-            return None;
+            return write_original(writer);
         };
 
         // Remapping if there's .map.json file
@@ -328,17 +333,15 @@ impl MooncDiagnostic {
                 report_builder.with_config(ariadne::Config::default().with_color(false));
         }
 
-        match report_builder.finish().eprint((
-            &display_filename,
-            ariadne::Source::from(source_file_content),
-        )) {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("internal rendering error: {e:?}");
-            }
-        };
+        report_builder.finish().write(
+            (
+                &display_filename,
+                ariadne::Source::from(source_file_content),
+            ),
+            writer,
+        )?;
 
-        Some(kind)
+        Ok(Some(kind))
     }
 
     fn get_content_and_filename_from_diagnostic_patch_file(
@@ -389,8 +392,40 @@ mod tests {
         let diagnostic = serde_json_lenient::from_str::<MooncDiagnostic>(diagnostic_json).unwrap();
         assert!(diagnostic.path.is_empty());
 
-        let rendered = diagnostic.render_diagnostics(false, None, false, DiagnosticLevel::Error);
+        let mut output = Vec::new();
+        let rendered = diagnostic
+            .render_diagnostics(&mut output, false, None, false, DiagnosticLevel::Error)
+            .unwrap();
 
         assert!(rendered.is_some());
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Error: [4049] Magic number mismatch\n"
+        );
+    }
+
+    #[test]
+    fn render_diagnostics_returns_writer_errors() {
+        let diagnostic_json = r#"{"$message_type":"diagnostic","level":"error","error_code":4049,"path":"","loc":"0:0-0:0","message":"Magic number mismatch"}"#;
+        let diagnostic = serde_json_lenient::from_str::<MooncDiagnostic>(diagnostic_json).unwrap();
+        let mut writer = FailingWriter;
+
+        let error = diagnostic
+            .render_diagnostics(&mut writer, false, None, false, DiagnosticLevel::Error)
+            .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(io::ErrorKind::BrokenPipe))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 }

@@ -1016,7 +1016,7 @@ pub fn execute_build(
     user_log: &UserLog,
 ) -> anyhow::Result<N2RunStats> {
     let execution = execute_build_capturing(cfg, input, target_dir)?;
-    Ok(finish_captured_build(cfg, &execution, None, user_log))
+    finish_captured_build(cfg, &execution, None, user_log)
 }
 
 /// Execute standalone dependency-package work before script-package work.
@@ -1033,12 +1033,7 @@ pub fn execute_standalone_build(
 
     let dependency_execution = execute_build_capturing(cfg, dependencies, target_dir)?;
     if !dependency_execution.successful() {
-        return Ok(finish_captured_build(
-            cfg,
-            &dependency_execution,
-            None,
-            user_log,
-        ));
+        return finish_captured_build(cfg, &dependency_execution, None, user_log);
     }
 
     let script_execution = match execute_build_capturing(cfg, input.script, target_dir) {
@@ -1046,17 +1041,22 @@ pub fn execute_standalone_build(
         Err(error) => {
             // Preserve dependency output if the second executor fails before it
             // can return captured output for command-level processing.
-            finish_captured_build(cfg, &dependency_execution, None, user_log);
+            finish_captured_build(cfg, &dependency_execution, None, user_log)?;
             return Err(error);
         }
     };
+    let stderr = io::stderr();
+    let mut diagnostic_writer = stderr.lock();
     let processed = process_captured_diagnostics(
         &[
             CapturedDiagnosticSource::new(&dependency_execution, None),
             CapturedDiagnosticSource::new(&script_execution, None),
         ],
         cfg,
-    );
+        &mut diagnostic_writer,
+    )
+    .context("failed to render compiler diagnostics")?;
+    drop(diagnostic_writer);
     processed.warn_if_limited(user_log);
 
     Ok(N2RunStats {
@@ -1193,7 +1193,7 @@ pub fn execute_build_partial(
     want_files: Box<WantFileFn>,
 ) -> anyhow::Result<N2RunStats> {
     let execution = execute_build_partial_capturing(cfg, input, target_dir, want_files)?;
-    Ok(finish_captured_build(cfg, &execution, build_meta, user_log))
+    finish_captured_build(cfg, &execution, build_meta, user_log)
 }
 
 fn execute_build_capturing(
@@ -1298,15 +1298,22 @@ fn finish_captured_build(
     execution: &CapturedBuildExecution,
     build_meta: Option<&BuildMeta>,
     user_log: &UserLog,
-) -> N2RunStats {
-    let processed =
-        process_captured_diagnostics(&[CapturedDiagnosticSource::new(execution, build_meta)], cfg);
+) -> anyhow::Result<N2RunStats> {
+    let stderr = io::stderr();
+    let mut diagnostic_writer = stderr.lock();
+    let processed = process_captured_diagnostics(
+        &[CapturedDiagnosticSource::new(execution, build_meta)],
+        cfg,
+        &mut diagnostic_writer,
+    )
+    .context("failed to render compiler diagnostics")?;
+    drop(diagnostic_writer);
     processed.warn_if_limited(user_log);
-    N2RunStats {
+    Ok(N2RunStats {
         n_tasks_executed: execution.n_tasks_executed,
         n_errors: processed.n_errors,
         n_warnings: processed.n_warnings,
-    }
+    })
 }
 
 /// Capture compiler output from n2 so it can be processed after the build.
@@ -1420,7 +1427,8 @@ fn rewrite_captured_diagnostic(
 fn process_captured_diagnostics(
     sources: &[CapturedDiagnosticSource<'_>],
     cfg: &BuildConfig,
-) -> ProcessedDiagnostics {
+    diagnostic_writer: &mut dyn io::Write,
+) -> io::Result<ProcessedDiagnostics> {
     let mut catcher = ResultCatcher::default();
     for source in sources {
         catcher.n_errors += source.diagnostics.n_errors;
@@ -1550,11 +1558,12 @@ fn process_captured_diagnostics(
                     for file_diagnostics in by_file.values() {
                         for diag in file_diagnostics {
                             let kind = diag.render_diagnostics(
+                                diagnostic_writer,
                                 n2::terminal::use_fancy(),
                                 patch_file,
                                 cfg.explain_errors,
                                 cfg.render_no_loc,
-                            );
+                            )?;
                             catcher.append_kind(kind);
                         }
                     }
@@ -1576,11 +1585,12 @@ fn process_captured_diagnostics(
                             if diagnostic_is_error(diag) {
                                 if displayed < limit {
                                     let kind = diag.render_diagnostics(
+                                        diagnostic_writer,
                                         n2::terminal::use_fancy(),
                                         patch_file,
                                         build_config.explain_errors,
                                         build_config.render_no_loc,
-                                    );
+                                    )?;
                                     catcher.append_kind(kind);
                                     displayed += 1;
                                 } else {
@@ -1601,11 +1611,12 @@ fn process_captured_diagnostics(
                     if displayed < limit {
                         for diag in non_errors {
                             let kind = diag.render_diagnostics(
+                                diagnostic_writer,
                                 n2::terminal::use_fancy(),
                                 patch_file,
                                 build_config.explain_errors,
                                 build_config.render_no_loc,
-                            );
+                            )?;
                             catcher.append_kind(kind);
                             displayed += 1;
                             if diagnostic_is_warning(diag) {
@@ -1631,12 +1642,12 @@ fn process_captured_diagnostics(
             }
         }
     }
-    ProcessedDiagnostics {
+    Ok(ProcessedDiagnostics {
         n_errors: catcher.n_errors,
         n_warnings: catcher.n_warnings,
         hidden_errors: hidden_errors_total,
         hidden_warnings: hidden_warnings_total,
-    }
+    })
 }
 
 fn diagnostic_is_error(diag: &MooncDiagnostic) -> bool {
@@ -1715,10 +1726,40 @@ mod tests {
                 build_meta: None,
             }],
             &cfg,
-        );
+            &mut io::sink(),
+        )
+        .unwrap();
 
         assert_eq!(processed.n_warnings, 0);
         assert_eq!(processed.n_errors, 1);
+    }
+
+    #[test]
+    fn diagnostic_writer_errors_are_returned() {
+        let mut catcher = ResultCatcher::default();
+        catcher.append_content(
+            serde_json::to_string(&diagnostic("", "error")).unwrap(),
+            None,
+        );
+
+        let cfg = BuildConfig {
+            output_style: OutputStyle::Fancy,
+            ..Default::default()
+        };
+        let error = match process_captured_diagnostics(
+            &[CapturedDiagnosticSource {
+                diagnostics: &catcher,
+                build_succeeded: false,
+                build_meta: None,
+            }],
+            &cfg,
+            &mut FailingWriter,
+        ) {
+            Ok(_) => panic!("diagnostic rendering should return writer failures"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
     }
 
     #[test]
@@ -1752,11 +1793,25 @@ mod tests {
                 },
             ],
             &cfg,
-        );
+            &mut io::sink(),
+        )
+        .unwrap();
 
         assert_eq!(processed.n_errors, 2);
         assert_eq!(processed.n_warnings, 0);
         assert_eq!(processed.hidden_errors, 1);
         assert_eq!(processed.hidden_warnings, 0);
+    }
+
+    struct FailingWriter;
+
+    impl io::Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(io::ErrorKind::BrokenPipe))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 }
