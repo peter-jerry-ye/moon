@@ -42,6 +42,7 @@ mod blackbox;
 mod build_package_dep_core;
 mod build_workflow;
 mod check_fmt;
+mod check_output_contract;
 mod circle_pkg_ab_001_test;
 mod clean;
 mod cond_comp;
