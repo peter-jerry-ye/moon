@@ -26,7 +26,7 @@ use std::{
 use crate::{
     ResolveOutput,
     build_plan::InputDirective,
-    model::{BuildPlanNode, BuildTarget, PackageId},
+    model::{BuildPlanNode, BuildTarget, PackageId, TargetKind},
     prebuild::PrebuildOutput,
 };
 use moonutil::user_log::UserLog;
@@ -345,6 +345,16 @@ impl<'a> BuildPlanConstructor<'a> {
                         target_kind: target.kind,
                     },
                 );
+                if target.kind == TargetKind::InlineTest
+                    && self.build_env.target_backend() == moonutil::target::TargetBackend::Js
+                {
+                    self.res.artifacts.provide(
+                        node,
+                        ArtifactKey::NodeTestPackageConfig {
+                            package: target.package,
+                        },
+                    );
+                }
             }
             BuildPlanNode::Bundle(module) => {
                 self.res
@@ -469,6 +479,9 @@ impl<'a> BuildPlanConstructor<'a> {
                 package,
                 target_kind,
             } => BuildPlanNode::GenerateTestInfo(package.build_target(*target_kind)),
+            ArtifactKey::NodeTestPackageConfig { package } => {
+                BuildPlanNode::GenerateTestInfo(package.build_target(TargetKind::InlineTest))
+            }
             ArtifactKey::BundleResult { module } => BuildPlanNode::Bundle(*module),
             ArtifactKey::RuntimeObject { source } => {
                 let info = self

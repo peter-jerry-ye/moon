@@ -203,6 +203,18 @@ pub(crate) fn generate_test_driver(
     );
     std::fs::write(&cmd.output_driver, generated_content)?;
 
+    // A local package boundary keeps Node from inheriting module settings from
+    // the project that owns the generated JavaScript test executable.
+    if cmd.target_backend == TargetBackend::Js && matches!(cmd.driver_kind, DriverKind::Internal) {
+        let output_parent = cmd.output_driver.parent().with_context(|| {
+            format!(
+                "test driver output `{}` has no parent directory",
+                cmd.output_driver.display()
+            )
+        })?;
+        std::fs::write(output_parent.join("package.json"), "{}")?;
+    }
+
     Ok(0)
 }
 
