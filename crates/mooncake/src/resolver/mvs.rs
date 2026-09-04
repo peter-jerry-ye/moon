@@ -561,17 +561,15 @@ fn resolve_pkg(
 
 #[cfg(test)]
 mod test {
-    use expect_test::expect;
-    use moonutil::resolution::ModuleId;
-    use moonutil::resolution::{DependencyEdge, ResolvedModule, ResolvedRootModules};
-    use petgraph::dot::{Config, Dot};
-    use test_log::test;
-
     use super::*;
     use crate::registry::Registry;
     use crate::registry::mock::{MockRegistry, create_mock_module};
     use crate::resolver::ResolverErrors;
     use crate::resolver::env::ResolverEnv;
+    use expect_test::expect;
+    use moonutil::resolution::ModuleId;
+    use moonutil::resolution::{DependencyEdge, ResolvedModule, ResolvedRootModules};
+    use petgraph::dot::{Config, Dot};
 
     fn create_mock_registry() -> Box<dyn Registry> {
         let mut registry = MockRegistry::new();
