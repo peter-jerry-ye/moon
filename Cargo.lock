@@ -2103,8 +2103,11 @@ dependencies = [
  "home",
  "ignore",
  "regex",
+ "serde",
+ "serde_json",
  "snapbox",
  "tempfile",
+ "tracing",
  "which 6.0.2",
 ]
 

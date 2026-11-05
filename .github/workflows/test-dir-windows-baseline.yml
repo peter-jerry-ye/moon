@@ -1,0 +1,154 @@
+# moon: The build system and package manager for MoonBit.
+# Copyright (C) 2026 International Digital Economy Academy
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+# either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
+
+name: TestDir Windows baseline
+
+on:
+  push:
+    branches: [codex/testdir-windows-baseline-20261105]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testdir-windows-baseline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-baseline:
+    if: github.repository == 'peter-jerry-ye/moon'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: 0
+      MOON_TEST_KEEP_DIR: ''
+    steps:
+      - name: Configure checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: ./.github/actions/setup-debug-cache
+
+      - name: Record experiment identity
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'test-dir-baseline'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          @{
+            revision = '${{ github.sha }}'
+            baseline = '0f7a23dec27193c6bff8a7366ef1c5573b47598b'
+            image = $env:ImageOS
+            image_version = $env:ImageVersion
+            retention = $false
+            test_threads = 1
+            repetitions = 5
+            fixture_scope = 'unchanged'
+          } | ConvertTo-Json | Set-Content (Join-Path $root 'experiment.json')
+
+      - name: Validate TestDir diagnostics
+        run: cargo test --locked -p moon-test-util
+
+      - name: Profile directory operations
+        id: probe
+        env:
+          MOON_TEST_TRACE_DIR: ${{ runner.temp }}/test-dir-baseline/probe
+        run: cargo run --locked -p moon-test-util --example profile_test_dir
+
+      - name: Upload directory probe before toolchain setup
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-dir-windows-probe
+          path: |
+            ${{ runner.temp }}/test-dir-baseline/probe/*.jsonl
+            ${{ runner.temp }}/test-dir-baseline/experiment.json
+          if-no-files-found: warn
+
+      - name: Install MoonBit nightly
+        run: |
+          $env:MOONBIT_INSTALL_VERSION = 'nightly'
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Tool versions
+        run: |
+          rustc --version
+          cargo --version
+          moon version --all
+          node --version
+
+      - name: Build test executables
+        id: build
+        run: |
+          cargo build --locked -p moonrun --bin moonrun
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p moon --test mod --no-run
+
+      - name: Measure unchanged fixture workloads
+        id: suite
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $root = Join-Path $env:RUNNER_TEMP 'test-dir-baseline'
+          $results = @()
+          $failed = $false
+          $cases = @(
+            @{ name = 'async-inline'; filter = 'test_cases::moon_test::test_async_test_inline'; exact = $true },
+            @{ name = 'async'; filter = 'test_cases::moon_test::test_async_test'; exact = $true },
+            @{ name = 'concurrent'; filter = 'test_cases::moon_test::test_max_concurrent_tests'; exact = $true },
+            @{ name = 'snapshots'; filter = 'test_cases::snapshot_testing::'; exact = $false }
+          )
+          foreach ($iteration in 1..5) {
+            foreach ($case in $cases) {
+              $sample = Join-Path $root "suite/$iteration/$($case.name)"
+              New-Item -ItemType Directory -Force $sample | Out-Null
+              $env:MOON_TEST_TRACE_DIR = $sample
+              $testArgs = @('test', '--locked', '-p', 'moon', '--test', 'mod', $case.filter, '--', '--test-threads=1')
+              if ($case.exact) { $testArgs += '--exact' }
+              $timer = [System.Diagnostics.Stopwatch]::StartNew()
+              & cargo @testArgs 2>&1 | Tee-Object -FilePath (Join-Path $sample 'test.log')
+              $code = $LASTEXITCODE
+              $timer.Stop()
+              $results += @{
+                iteration = $iteration
+                case = $case.name
+                exit_code = $code
+                wall_ms = $timer.Elapsed.TotalMilliseconds
+              }
+              $results | ConvertTo-Json | Set-Content (Join-Path $root 'outcomes.json')
+              if ($code -ne 0) { $failed = $true }
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Record stage outcomes
+        if: ${{ always() && !cancelled() }}
+        run: |
+          Write-Host 'probe: ${{ steps.probe.outcome }}'
+          Write-Host 'build: ${{ steps.build.outcome }}'
+          Write-Host 'suite: ${{ steps.suite.outcome }}'
+
+      - name: Upload baseline traces and test outcomes
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-dir-windows-baseline
+          path: ${{ runner.temp }}/test-dir-baseline/
+          if-no-files-found: warn
+
