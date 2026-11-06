@@ -30,20 +30,6 @@ impl TestDir {
     // create a new TestDir with the test directory in tests/test_cases/<sub>
     fn new(sub: &str) -> Self {
         let case_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/test_cases");
-        // This diagnostic branch runs the same exact test binary for both scopes.
-        if std::env::var_os("MOON_ASYNC_INLINE_SCOPE").as_deref() == Some("narrow".as_ref()) {
-            assert_eq!(sub, "moon_test");
-            assert_eq!(
-                std::thread::current().name(),
-                Some("test_cases::moon_test::test_async_test_inline")
-            );
-            return Self(moon_test_util::test_dir::TestDir::from_case_root_subset(
-                case_root,
-                sub,
-                ["async_test_inline", "dummy_async_impl"],
-                true,
-            ));
-        }
         Self(moon_test_util::test_dir::TestDir::from_case_root(
             case_root, sub, true,
         ))

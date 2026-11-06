@@ -461,15 +461,37 @@ fn test_generate_test_driver_incremental() {
 
 #[test]
 fn test_async_test_inline() {
-    let dir = TestDir::new("moon_test");
+    let started = std::time::Instant::now();
+    let cases = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/test_cases");
+    let (temp, sources) = match std::env::var("MOON_ASYNC_INLINE_SCOPE").as_deref() {
+        Ok("copy") => {
+            let temp = TestDir(moon_test_util::test_dir::TestDir::from_case_root_subset(
+                &cases,
+                "moon_test",
+                ["async_test_inline", "dummy_async_impl"],
+                true,
+            ));
+            let sources = temp.as_ref().to_owned();
+            (temp, sources)
+        }
+        Ok("shared") | Err(std::env::VarError::NotPresent) => {
+            (TestDir::new_empty(), cases.join("moon_test"))
+        }
+        other => panic!("invalid async-inline fixture mode: {other:?}"),
+    };
+    let target = temp.join("_build");
 
-    let out1 = get_stdout(&dir, ["-C", "async_test_inline", "test"]);
+    // A driver that overlooks `async test` in ordinary source can exit successfully with zero tests.
+    let args = ["-C", "async_test_inline", "test", "--target-dir"].map(std::ffi::OsStr::new);
+    let output = get_stdout(&sources, args.into_iter().chain([target.as_os_str()]));
     check(
-        &out1,
+        &output,
         expect![[r#"
             Total tests: 1, passed: 1, failed: 0.
         "#]],
-    )
+    );
+    drop(temp);
+    eprintln!("async-inline-body-us {}", started.elapsed().as_micros());
 }
 
 #[test]

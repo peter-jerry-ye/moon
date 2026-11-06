@@ -16,7 +16,7 @@
 #
 # For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
 
-name: TestDir async inline paired comparison
+name: TestDir shared-source comparison
 
 on:
   push:
@@ -61,13 +61,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --locked -p moon --test mod --no-run
 
-      - name: Measure the full and narrow fixture in pairs
-        run: python .github/scripts/test-dir-async-inline-ab.py "${{ runner.temp }}/async-inline-ab"
+      - name: Compare private copies and shared sources
+        run: python .github/scripts/test-dir-async-inline-ab.py "${{ runner.temp }}/async-inline-shared"
 
       - name: Upload paired outcomes and raw traces
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: async-inline-paired-timings
-          path: ${{ runner.temp }}/async-inline-ab/
+          name: async-inline-shared-timings
+          path: ${{ runner.temp }}/async-inline-shared/
           if-no-files-found: warn
