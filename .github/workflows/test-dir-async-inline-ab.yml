@@ -1,0 +1,73 @@
+# moon: The build system and package manager for MoonBit.
+# Copyright (C) 2026 International Digital Economy Academy
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+# either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# For inquiries, you can contact us via e-mail at jichuruanjian@idea.edu.cn.
+
+name: TestDir async inline paired comparison
+
+on:
+  push:
+    branches: [codex/testdir-async-inline-ab-20261106]
+
+permissions:
+  contents: read
+
+jobs:
+  paired-comparison:
+    if: github.repository == 'peter-jerry-ye/moon'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: 0
+    steps:
+      - name: Configure checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: ./.github/actions/setup-debug-cache
+      - name: Install MoonBit nightly
+        run: |
+          $env:MOONBIT_INSTALL_VERSION = 'nightly'
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Tool versions
+        run: |
+          rustc --version
+          cargo --version
+          moon version --all
+          node --version
+
+      - name: Build test executables
+        id: build
+        run: |
+          cargo build --locked -p moonrun --bin moonrun
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p moon --test mod --no-run
+
+      - name: Measure the full and narrow fixture in pairs
+        run: python .github/scripts/test-dir-async-inline-ab.py "${{ runner.temp }}/async-inline-ab"
+
+      - name: Upload paired outcomes and raw traces
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: async-inline-paired-timings
+          path: ${{ runner.temp }}/async-inline-ab/
+          if-no-files-found: warn
